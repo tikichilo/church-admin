@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Admin — Makeni Central SDA</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --primary:   #041534;
+    --gold:      #755b00;
+    --gold-lt:   #fed977;
+    --gold-dim:  #e6c364;
+    --surface:   #f9f9f9;
+    --surface-2: #f3f3f4;
+    --surface-3: #eeeeee;
+    --border:    #e2e2e2;
+    --text:      #1a1c1c;
+    --muted:     #45464e;
+    --danger:    #ba1a1a;
+    --success:   #2e7d32;
+    --radius:    12px;
+    --shadow:    0 4px 20px rgba(4,21,52,0.08);
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--surface); color: var(--text); min-height: 100vh; display: flex; }
+
+  /* ── SIDEBAR ── */
+  .sidebar { width: 240px; background: var(--primary); min-height: 100vh; display: flex; flex-direction: column; flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; overflow-y: auto; }
+  .sidebar-brand { padding: 28px 24px 20px; border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
+  .sidebar-brand .logo-ring { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--gold-dim); background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; margin-bottom: 12px; font-family: 'Playfair Display', serif; font-size: 18px; color: var(--gold-dim); font-weight: 700; }
+  .sidebar-brand h1 { font-family: 'Playfair Display', serif; font-size: 15px; font-weight: 700; color: #fff; line-height: 1.3; }
+  .sidebar-brand p { font-size: 11px; color: rgba(255,255,255,0.4); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 2px; }
+  .sidebar-nav { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 2px; }
+  .nav-label { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.3); padding: 12px 12px 6px; font-weight: 600; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.6); transition: all 0.2s; border: none; background: none; width: 100%; text-align: left; }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+  .nav-item.active { background: rgba(230,195,100,0.15); color: var(--gold-dim); }
+  .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .sidebar-footer { padding: 16px 12px; border-top: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
+  .server-status { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.04); font-size: 12px; color: rgba(255,255,255,0.5); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #4caf50; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(76,175,80,0.25); }
+  .status-dot.offline { background: var(--danger); box-shadow: 0 0 0 2px rgba(186,26,26,0.25); }
+
+  /* ── MAIN ── */
+  .main { margin-left: 240px; flex: 1; min-height: 100vh; display: flex; flex-direction: column; }
+  .topbar { background: #fff; border-bottom: 1px solid var(--border); padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+  .topbar-title { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700; color: var(--primary); }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .api-input-wrap { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+  .api-input-wrap input { border: none; background: none; font-size: 13px; width: 220px; font-family: 'DM Sans', sans-serif; color: var(--text); outline: none; }
+  .btn { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: #0a2248; }
+  .btn-gold { background: var(--gold-lt); color: var(--gold); }
+  .btn-gold:hover { background: var(--gold-dim); }
+  .btn-danger { background: #ffdad6; color: var(--danger); }
+  .btn-danger:hover { background: #ffb4ab; }
+  .btn-success { background: #e8f5e9; color: var(--success); }
+  .btn-success:hover { background: #c8e6c9; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+  /* ── CONTENT ── */
+  .content { padding: 32px; flex: 1; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── STAT CARDS ── */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 22px; position: relative; overflow: hidden; }
+  .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--gold); }
+  .stat-card.blue::before { background: #1a5fa8; }
+  .stat-card.green::before { background: var(--success); }
+  .stat-card.red::before { background: var(--danger); }
+  .stat-card.purple::before { background: #6a1b9a; }
+  .stat-label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+  .stat-value { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 700; color: var(--primary); line-height: 1; }
+  .stat-sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+  /* ── CARDS ── */
+  .card { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .card-header { padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .card-header h3 { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: var(--primary); }
+  .card-body { padding: 24px; }
+
+  /* ── TABLE ── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border); }
+  td { padding: 13px 16px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface-2); }
+
+  /* ── BADGE ── */
+  .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
+  .badge-gold { background: #fff3cd; color: var(--gold); }
+  .badge-green { background: #e8f5e9; color: var(--success); }
+  .badge-blue { background: #e3f2fd; color: #1565c0; }
+  .badge-red { background: #ffebee; color: var(--danger); }
+  .badge-gray { background: var(--surface-3); color: var(--muted); }
+  .badge-purple { background: #f3e5f5; color: #6a1b9a; }
+
+  /* ── FORM ── */
+  .form-group { margin-bottom: 18px; }
+  .form-group label { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; font-family: 'DM Sans', sans-serif; color: var(--text); background: #fff; outline: none; transition: border-color 0.2s; }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--gold); }
+  .form-group textarea { resize: vertical; min-height: 100px; line-height: 1.6; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+
+  /* ── PROGRESS ── */
+  .progress-bar-wrap { height: 8px; background: var(--surface-3); border-radius: 100px; overflow: hidden; margin-top: 6px; }
+  .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--gold) 0%, var(--gold-dim) 100%); border-radius: 100px; transition: width 0.6s ease; }
+
+  /* ── DISCUSSION CARD ── */
+  .disc-row { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 14px; }
+  .disc-row:last-child { border-bottom: none; }
+  .disc-avatar { width: 38px; height: 38px; border-radius: 50%; background: var(--gold-lt); color: var(--gold); font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .disc-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .disc-title { font-weight: 600; font-size: 14px; color: var(--primary); }
+  .disc-body-preview { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+  .disc-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
+
+  /* ── STORY CARDS (kids) ── */
+  .story-row { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 14px; }
+  .story-row:last-child { border-bottom: none; }
+  .story-thumb { width: 60px; height: 60px; border-radius: 8px; background: var(--surface-3); object-fit: cover; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+  .story-title { font-weight: 600; font-size: 14px; color: var(--primary); }
+  .story-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .story-preview { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+  .story-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+
+  /* ── ANNOUNCEMENT ROWS ── */
+  .ann-row { padding: 14px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .ann-row:last-child { border-bottom: none; }
+  .ann-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
+  .ann-text { font-size: 14px; color: var(--text); flex: 1; }
+  .ann-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  /* ── MODAL ── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(4,21,52,0.5); backdrop-filter: blur(4px); z-index: 999; align-items: center; justify-content: center; padding: 20px; }
+  .modal-overlay.open { display: flex; }
+  .modal-box { background: #fff; border-radius: 16px; width: 100%; max-width: 580px; box-shadow: 0 24px 60px rgba(4,21,52,0.2); overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
+  .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .modal-header h3 { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; color: var(--primary); }
+  .modal-close { width: 32px; height: 32px; border-radius: 50%; border: none; background: var(--surface-2); cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; color: var(--muted); transition: background 0.2s; }
+  .modal-close:hover { background: var(--surface-3); }
+  .modal-body { padding: 24px; overflow-y: auto; }
+  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; }
+
+  /* ── TOAST ── */
+  #toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+  .toast { background: var(--primary); color: #fff; padding: 12px 20px; border-radius: 100px; font-size: 13px; font-weight: 600; border-left: 4px solid var(--gold-dim); opacity: 0; transform: translateY(12px); transition: all 0.3s ease; pointer-events: none; white-space: nowrap; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.t-success { border-color: #4caf50; }
+  .toast.t-danger { border-color: var(--danger); background: #2d0a0a; }
+
+  /* ── EMPTY STATE ── */
+  .empty-state { text-align: center; padding: 48px 24px; color: var(--muted); }
+  .empty-state svg { width: 48px; height: 48px; margin: 0 auto 12px; opacity: 0.3; display: block; }
+  .empty-state p { font-size: 14px; }
+
+  /* ── FUND EDIT ── */
+  .fund-display { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .fund-stat { background: var(--surface-2); border-radius: 10px; padding: 16px 18px; }
+  .fund-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 600; }
+  .fund-stat-value { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 700; color: var(--primary); margin-top: 4px; }
+
+  /* ── LOADING ── */
+  .loading { display: flex; align-items: center; justify-content: center; padding: 48px; color: var(--muted); font-size: 14px; gap: 10px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.7s linear infinite; }
+
+  /* ── TWO/THREE-COL LAYOUT ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+  .full-col { grid-column: 1 / -1; }
+  .mb-20 { margin-bottom: 20px; }
+  .mt-20 { margin-top: 20px; }
+
+  /* ── LESSON PREVIEW ── */
+  .lesson-preview { background: var(--surface-2); border-radius: 10px; padding: 20px; border-left: 3px solid var(--gold); font-size: 13px; line-height: 1.7; color: var(--muted); }
+  .lesson-preview strong { color: var(--primary); }
+
+  /* ── CHAR COUNTER ── */
+  .char-counter { font-size: 11px; color: var(--muted); text-align: right; margin-top: 4px; }
+  .char-counter.warn { color: var(--danger); }
+
+  @media (max-width: 900px) {
+    .sidebar { width: 200px; }
+    .main { margin-left: 200px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .two-col, .three-col { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ SIDEBAR ══════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="logo-ring">M</div>
+    <h1>Makeni Central</h1>
+    <p>Admin Panel</p>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-label">Overview</div>
+    <button class="nav-item active" onclick="showPage('dashboard')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Dashboard
+    </button>
+
+    <div class="nav-label">Home Page</div>
+    <button class="nav-item" onclick="showPage('lesson')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      Lesson of the Week
+    </button>
+    <button class="nav-item" onclick="showPage('announcements')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      Announcements
+    </button>
+
+    <div class="nav-label">Kids Corner</div>
+    <button class="nav-item" onclick="showPage('stories')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      Bible Stories
+    </button>
+
+    <div class="nav-label">Data</div>
+    <button class="nav-item" onclick="showPage('donations')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z"/></svg>
+      Donations
+    </button>
+    <button class="nav-item" onclick="showPage('fund')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3h18v4H3z"/><path d="M3 10h18v11H3z"/><path d="M12 14v3m-3-1.5h6"/></svg>
+      Building Fund
+    </button>
+    <button class="nav-item" onclick="showPage('discussions')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      Youth Discussions
+    </button>
+
+    <div class="nav-label">Settings</div>
+    <button class="nav-item" onclick="showPage('settings')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Settings
+    </button>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="server-status">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Checking…</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ══════════════ MAIN ══════════════ -->
+<div class="main">
+  <div class="topbar">
+    <span class="topbar-title" id="page-title">Dashboard</span>
+    <div class="topbar-right">
+      <div class="api-input-wrap">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <input type="text" id="api-url-input" placeholder="API URL e.g. http://localhost:3000"/>
+      </div>
+      <button class="btn btn-gold" onclick="connectAndRefresh()">Connect</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ══ DASHBOARD PAGE ══ -->
+    <div class="page active" id="page-dashboard">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Raised</div>
+          <div class="stat-value" id="dash-raised">—</div>
+          <div class="stat-sub">Building fund</div>
+        </div>
+        <div class="stat-card blue">
+          <div class="stat-label">Fund Goal</div>
+          <div class="stat-value" id="dash-goal">—</div>
+          <div class="stat-sub">Target amount</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-label">Total Donors</div>
+          <div class="stat-value" id="dash-donors">—</div>
+          <div class="stat-sub">Via Give modal</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Discussions</div>
+          <div class="stat-value" id="dash-discussions">—</div>
+          <div class="stat-sub">Youth board posts</div>
+        </div>
+      </div>
+
+      <!-- Quick links row -->
+      <div class="three-col mb-20">
+        <div class="card" style="border-top: 3px solid var(--gold); cursor:pointer;" onclick="showPage('lesson')">
+          <div class="card-body" style="display:flex; align-items:center; gap:12px;">
+            <div style="width:40px;height:40px;border-radius:10px;background:#fff3cd;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#755b00" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            </div>
+            <div>
+              <div style="font-weight:600; font-size:14px; color:var(--primary);">Lesson of the Week</div>
+              <div style="font-size:12px; color:var(--muted);" id="dash-lesson-title">Loading…</div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="border-top: 3px solid #1565c0; cursor:pointer;" onclick="showPage('announcements')">
+          <div class="card-body" style="display:flex; align-items:center; gap:12px;">
+            <div style="width:40px;height:40px;border-radius:10px;background:#e3f2fd;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1565c0" stroke-width="2"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            </div>
+            <div>
+              <div style="font-weight:600; font-size:14px; color:var(--primary);">Announcements</div>
+              <div style="font-size:12px; color:var(--muted);" id="dash-ann-count">Loading…</div>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="border-top: 3px solid #6a1b9a; cursor:pointer;" onclick="showPage('stories')">
+          <div class="card-body" style="display:flex; align-items:center; gap:12px;">
+            <div style="width:40px;height:40px;border-radius:10px;background:#f3e5f5;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6a1b9a" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            </div>
+            <div>
+              <div style="font-weight:600; font-size:14px; color:var(--primary);">Kids Stories</div>
+              <div style="font-size:12px; color:var(--muted);" id="dash-stories-count">Loading…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">
+            <h3>Fund Progress</h3>
+            <button class="btn btn-sm btn-gold" onclick="showPage('fund')">Manage</button>
+          </div>
+          <div class="card-body">
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+              <span style="font-size:13px; color:var(--muted);">Progress to goal</span>
+              <span style="font-size:13px; font-weight:600;" id="dash-pct">—%</span>
+            </div>
+            <div class="progress-bar-wrap">
+              <div class="progress-bar-fill" id="dash-bar" style="width:0%"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-top:8px; font-size:12px; color:var(--muted);">
+              <span id="dash-raised-sub">ZMW 0 raised</span>
+              <span id="dash-goal-sub">ZMW 0 goal</span>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h3>Recent Donations</h3>
+            <button class="btn btn-sm btn-primary" onclick="showPage('donations')">View all</button>
+          </div>
+          <div id="dash-recent-donations">
+            <div class="loading"><div class="spinner"></div> Loading…</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-20">
+        <div class="card">
+          <div class="card-header">
+            <h3>Recent Youth Discussions</h3>
+            <button class="btn btn-sm btn-primary" onclick="showPage('discussions')">View all</button>
+          </div>
+          <div id="dash-recent-discussions">
+            <div class="loading"><div class="spinner"></div> Loading…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ LESSON OF THE WEEK PAGE ══ -->
+    <div class="page" id="page-lesson">
+      <div class="two-col mb-20">
+        <!-- Current lesson preview -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Current Lesson</h3>
+            <span class="badge badge-green" id="lesson-status-badge">Saved</span>
+          </div>
+          <div class="card-body">
+            <div class="lesson-preview" id="lesson-current-preview">
+              <strong id="lp-title">Loading…</strong><br/>
+              <em id="lp-verse" style="color:var(--gold);"></em><br/><br/>
+              <span id="lp-body"></span>
+            </div>
+            <p class="form-hint" style="margin-top:12px;">This is what currently appears on <strong>index.html</strong> under "Lesson of the Week".</p>
+          </div>
+        </div>
+
+        <!-- Edit form -->
+        <div class="card">
+          <div class="card-header"><h3>Edit Lesson</h3></div>
+          <div class="card-body">
+            <div class="form-group">
+              <label>Lesson Title</label>
+              <input type="text" id="lesson-title" placeholder="e.g. The Promise of Restoration" maxlength="100"/>
+              <div class="char-counter" id="lesson-title-counter">0 / 100</div>
+            </div>
+            <div class="form-group">
+              <label>Scripture Verse</label>
+              <input type="text" id="lesson-verse" placeholder="e.g. "He restores my soul..." — Psalm 23:3" maxlength="200"/>
+              <div class="form-hint">Include quote marks and reference.</div>
+            </div>
+            <div class="form-group">
+              <label>Lesson Body</label>
+              <textarea id="lesson-body" rows="5" maxlength="1000" placeholder="This week we explore…"></textarea>
+              <div class="char-counter" id="lesson-body-counter">0 / 1000</div>
+            </div>
+            <div class="form-group">
+              <label>Read Full Lesson URL (optional)</label>
+              <input type="url" id="lesson-url" placeholder="https://…"/>
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="saveLesson()">Save Lesson</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Theme of the Month -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Theme of the Month</h3>
+          <span class="badge badge-blue">Sidebar panel on Home</span>
+        </div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Theme Heading</label>
+              <input type="text" id="theme-heading" placeholder="e.g. Abide in Me" maxlength="60"/>
+            </div>
+            <div class="form-group">
+              <label>Theme Scripture Reference</label>
+              <input type="text" id="theme-ref" placeholder="e.g. John 15:5" maxlength="40"/>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Theme Description</label>
+            <textarea id="theme-body" rows="3" maxlength="300" placeholder="A short paragraph about this month's theme…"></textarea>
+          </div>
+          <button class="btn btn-primary" onclick="saveTheme()">Save Theme</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ ANNOUNCEMENTS PAGE ══ -->
+    <div class="page" id="page-announcements">
+      <div class="two-col mb-20">
+        <!-- Add announcement form -->
+        <div class="card">
+          <div class="card-header"><h3>Add Announcement</h3></div>
+          <div class="card-body">
+            <div class="form-group">
+              <label>Announcement Text</label>
+              <input type="text" id="ann-text" placeholder="e.g. Prayer meeting this Friday at 6 PM" maxlength="200"/>
+              <div class="char-counter" id="ann-text-counter">0 / 200</div>
+            </div>
+            <div class="form-group">
+              <label>Visible Until (optional)</label>
+              <input type="date" id="ann-expires"/>
+              <div class="form-hint">Leave blank to show indefinitely.</div>
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="addAnnouncement()">Add to Ticker</button>
+          </div>
+        </div>
+
+        <!-- Live preview -->
+        <div class="card">
+          <div class="card-header"><h3>Ticker Preview</h3></div>
+          <div class="card-body" style="padding:0; overflow:hidden; border-radius:0 0 12px 12px;">
+            <div style="background:#fed977; padding:12px 20px; font-size:13px; font-weight:600; color:#755b00; overflow:hidden; white-space:nowrap;">
+              <div id="ann-ticker-preview" style="display:inline;">Loading announcements…</div>
+            </div>
+            <div style="padding:16px 20px;">
+              <p style="font-size:12px; color:var(--muted);">This scrolls across the <strong>yellow ticker bar</strong> on index.html beneath the hero.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Current announcements list -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Current Announcements</h3>
+          <span class="badge badge-gold" id="ann-count-badge">0 active</span>
+        </div>
+        <div id="ann-list">
+          <div class="loading"><div class="spinner"></div> Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ KIDS STORIES PAGE ══ -->
+    <div class="page" id="page-stories">
+      <div class="two-col mb-20">
+        <!-- Add story form -->
+        <div class="card">
+          <div class="card-header"><h3>Add Bible Story</h3></div>
+          <div class="card-body">
+            <div class="form-group">
+              <label>Story Title</label>
+              <input type="text" id="story-title" placeholder="e.g. Noah's Floating Zoo" maxlength="100"/>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Bible Character / Series</label>
+                <input type="text" id="story-tag" placeholder="e.g. The Great Flood" maxlength="60"/>
+              </div>
+              <div class="form-group">
+                <label>Age Group</label>
+                <select id="story-age">
+                  <option value="All Ages">All Ages</option>
+                  <option value="3–6">3–6 years</option>
+                  <option value="7–10">7–10 years</option>
+                  <option value="11+">11+ years</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Story Preview (shown on card)</label>
+              <textarea id="story-preview-text" rows="3" maxlength="200" placeholder="Discover how Noah…"></textarea>
+              <div class="char-counter" id="story-preview-counter">0 / 200</div>
+            </div>
+            <div class="form-group">
+              <label>Full Story Content</label>
+              <textarea id="story-body" rows="6" maxlength="3000" placeholder="Write the full story here…"></textarea>
+              <div class="char-counter" id="story-body-counter">0 / 3000</div>
+            </div>
+            <div class="form-group">
+              <label>Cover Image URL (optional)</label>
+              <input type="url" id="story-img" placeholder="https://…"/>
+              <div class="form-hint">Leave blank to use a default emoji illustration.</div>
+            </div>
+            <div class="form-group">
+              <label>Featured?</label>
+              <select id="story-featured">
+                <option value="false">Regular card</option>
+                <option value="true">Featured (large bento card)</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="addStory()">Publish Story</button>
+          </div>
+        </div>
+
+        <!-- Stats + tips -->
+        <div style="display:flex; flex-direction:column; gap:20px;">
+          <div class="card">
+            <div class="card-body">
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div class="fund-stat">
+                  <div class="fund-stat-label">Total Stories</div>
+                  <div class="fund-stat-value" id="stories-total">—</div>
+                </div>
+                <div class="fund-stat">
+                  <div class="fund-stat-label">Featured</div>
+                  <div class="fund-stat-value" id="stories-featured">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Tips for Kids Stories</h3></div>
+            <div class="card-body" style="font-size:13px; color:var(--muted); line-height:1.9;">
+              <ul style="padding-left:16px;">
+                <li>Keep titles short and exciting</li>
+                <li>Use simple language — age 6 reading level</li>
+                <li>End every story with a brief moral/lesson</li>
+                <li>Only one story should be Featured at a time</li>
+                <li>The "Heroes of the Faith" series works well as Featured</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stories list -->
+      <div class="card">
+        <div class="card-header">
+          <h3>All Bible Stories</h3>
+          <span class="badge badge-purple" id="stories-count-badge">0 stories</span>
+        </div>
+        <div id="stories-list">
+          <div class="loading"><div class="spinner"></div> Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ DONATIONS PAGE ══ -->
+    <div class="page" id="page-donations">
+      <div class="card">
+        <div class="card-header">
+          <h3>All Donations</h3>
+          <span class="badge badge-gold" id="donations-count">0 records</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Amount</th><th>Currency</th><th>Date</th><th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="donations-tbody">
+              <tr><td colspan="5"><div class="loading"><div class="spinner"></div> Loading…</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ FUND PAGE ══ -->
+    <div class="page" id="page-fund">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><h3>Current Fund Stats</h3></div>
+          <div class="card-body">
+            <div class="fund-display">
+              <div class="fund-stat"><div class="fund-stat-label">Raised</div><div class="fund-stat-value" id="fund-raised-display">—</div></div>
+              <div class="fund-stat"><div class="fund-stat-label">Goal</div><div class="fund-stat-value" id="fund-goal-display">—</div></div>
+              <div class="fund-stat"><div class="fund-stat-label">Donors</div><div class="fund-stat-value" id="fund-donors-display">—</div></div>
+              <div class="fund-stat"><div class="fund-stat-label">Complete</div><div class="fund-stat-value" id="fund-pct-display">—%</div></div>
+            </div>
+            <div class="progress-bar-wrap" style="height:12px;">
+              <div class="progress-bar-fill" id="fund-bar-display" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Update Fund Goal</h3></div>
+          <div class="card-body">
+            <p style="font-size:13px; color:var(--muted); margin-bottom:18px;">Change the fundraising target shown on the building page. The amount already raised is never affected.</p>
+            <div class="form-group">
+              <label>New Goal (ZMW)</label>
+              <input type="number" id="fund-goal-input" placeholder="e.g. 500000" min="1"/>
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="updateFundGoal()">Update Goal</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ DISCUSSIONS PAGE ══ -->
+    <div class="page" id="page-discussions">
+      <div class="card">
+        <div class="card-header">
+          <h3>Youth Board Discussions</h3>
+          <span class="badge badge-gold" id="disc-count">0 posts</span>
+        </div>
+        <div id="discussions-list">
+          <div class="loading"><div class="spinner"></div> Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SETTINGS PAGE ══ -->
+    <div class="page" id="page-settings">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><h3>API Connection</h3></div>
+          <div class="card-body">
+            <div class="form-group">
+              <label>Server URL</label>
+              <input type="text" id="settings-api-url" placeholder="http://localhost:3000"/>
+            </div>
+            <button class="btn btn-primary" onclick="saveApiUrl()">Save & Connect</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>About</h3></div>
+          <div class="card-body" style="font-size:13px; color:var(--muted); line-height:1.8;">
+            <p><strong style="color:var(--primary);">Makeni Central SDA Admin</strong></p>
+            <p style="margin-top:8px;">Manages all website data via <code style="background:var(--surface-2); padding:2px 6px; border-radius:4px;">server.js</code> endpoints:</p>
+            <ul style="margin-top:8px; padding-left:18px; line-height:2;">
+              <li>GET/POST /api/lesson</li>
+              <li>GET/POST /api/theme</li>
+              <li>GET/POST/DELETE /api/announcements</li>
+              <li>GET/POST/DELETE /api/stories</li>
+              <li>GET /api/fund · POST /api/fund/goal</li>
+              <li>GET /api/donations</li>
+              <li>GET/POST/DELETE /api/discussions</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.content -->
+</div><!-- /.main -->
+
+<!-- ══════════════ DELETE DISCUSSION MODAL ══════════════ -->
+<div class="modal-overlay" id="delete-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Delete Discussion</h3>
+      <button class="modal-close" onclick="closeDeleteModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:14px; color:var(--muted);">Are you sure you want to delete this discussion? This cannot be undone.</p>
+      <div style="margin-top:16px; padding:14px; background:var(--surface-2); border-radius:8px; border-left:3px solid var(--danger);">
+        <p style="font-size:13px; font-weight:600;" id="delete-disc-title">—</p>
+        <p style="font-size:12px; color:var(--muted); margin-top:2px;" id="delete-disc-author">—</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeDeleteModal()" style="border:1px solid var(--border);">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ DELETE STORY MODAL ══════════════ -->
+<div class="modal-overlay" id="delete-story-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Delete Story</h3>
+      <button class="modal-close" onclick="closeDeleteStoryModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:14px; color:var(--muted);">Permanently remove this story from Kids Corner?</p>
+      <div style="margin-top:16px; padding:14px; background:var(--surface-2); border-radius:8px; border-left:3px solid var(--danger);">
+        <p style="font-size:13px; font-weight:600;" id="delete-story-title">—</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeDeleteStoryModal()" style="border:1px solid var(--border);">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDeleteStory()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ DELETE ANNOUNCEMENT MODAL ══════════════ -->
+<div class="modal-overlay" id="delete-ann-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Remove Announcement</h3>
+      <button class="modal-close" onclick="closeDeleteAnnModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:14px; color:var(--muted);">Remove this announcement from the ticker?</p>
+      <div style="margin-top:16px; padding:14px; background:var(--surface-2); border-radius:8px; border-left:3px solid var(--danger);">
+        <p style="font-size:13px; font-weight:600;" id="delete-ann-text">—</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeDeleteAnnModal()" style="border:1px solid var(--border);">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDeleteAnn()">Remove</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ TOAST ══════════════ -->
+<div id="toast-container"></div>
+
+<script>
+'use strict';
+
+let API_URL = localStorage.getItem('sda_admin_api') || 'http://localhost:3000';
+let deleteTargetId   = null;
+let deleteStoryId    = null;
+let deleteAnnId      = null;
+let allDonations     = [];
+let allDiscussions   = [];
+let allStories       = [];
+let allAnnouncements = [];
+
+/* ══════════════ INIT ══════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  el('api-url-input').value    = API_URL;
+  el('settings-api-url').value = API_URL;
+  setupCharCounters();
+  checkStatus();
+  loadAll();
+});
+
+/* ══════════════ NAVIGATION ══════════════ */
+const pageTitles = {
+  dashboard:     'Dashboard',
+  lesson:        'Lesson of the Week',
+  announcements: 'Announcements',
+  stories:       'Kids Bible Stories',
+  donations:     'Donations',
+  fund:          'Building Fund',
+  discussions:   'Youth Discussions',
+  settings:      'Settings',
+};
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el('page-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    if (btn.getAttribute('onclick')?.includes("'" + name + "'")) btn.classList.add('active');
+  });
+  el('page-title').textContent = pageTitles[name] || name;
+}
+
+/* ══════════════ API ══════════════ */
+async function apiFetch(path, options = {}) {
+  try {
+    const res = await fetch(API_URL + path, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+/* ══════════════ STATUS ══════════════ */
+async function checkStatus() {
+  const dot  = el('status-dot');
+  const text = el('status-text');
+  const data = await apiFetch('/api/fund');
+  if (data !== null) {
+    dot.className    = 'status-dot';
+    text.textContent = 'Connected';
+  } else {
+    dot.className    = 'status-dot offline';
+    text.textContent = 'Offline';
+  }
+}
+
+/* ══════════════ LOAD ALL ══════════════ */
+async function loadAll() {
+  await Promise.all([
+    loadFund(),
+    loadDonations(),
+    loadDiscussions(),
+    loadLesson(),
+    loadAnnouncements(),
+    loadStories(),
+  ]);
+}
+
+/* ══════════════ FUND ══════════════ */
+async function loadFund() {
+  const data = await apiFetch('/api/fund');
+  if (!data) return;
+  const raised = data.raised || 0;
+  const goal   = data.goal   || 1;
+  const donors = data.donors || 0;
+  const pct    = Math.min(Math.round((raised / goal) * 100), 100);
+  const fmt = n => 'ZMW ' + n.toLocaleString();
+
+  el('dash-raised').textContent   = fmt(raised);
+  el('dash-goal').textContent     = fmt(goal);
+  el('dash-donors').textContent   = donors.toLocaleString();
+  el('dash-pct').textContent      = pct + '%';
+  el('dash-bar').style.width      = pct + '%';
+  el('dash-raised-sub').textContent = fmt(raised) + ' raised';
+  el('dash-goal-sub').textContent   = fmt(goal) + ' goal';
+
+  el('fund-raised-display').textContent  = fmt(raised);
+  el('fund-goal-display').textContent    = fmt(goal);
+  el('fund-donors-display').textContent  = donors.toLocaleString();
+  el('fund-pct-display').textContent     = pct + '%';
+  el('fund-bar-display').style.width     = pct + '%';
+  el('fund-goal-input').placeholder      = goal;
+}
+
+async function updateFundGoal() {
+  const val = parseFloat(el('fund-goal-input').value);
+  if (!val || val <= 0) { toast('Enter a valid goal amount', 'danger'); return; }
+  const res = await apiFetch('/api/fund/goal', { method: 'POST', body: JSON.stringify({ goal: val }) });
+  if (res && res.success) { toast('Fund goal updated!', 'success'); loadFund(); }
+  else toast('Update failed — check server connection', 'danger');
+}
+
+/* ══════════════ DONATIONS ══════════════ */
+async function loadDonations() {
+  const data = await apiFetch('/api/donations');
+  allDonations = Array.isArray(data) ? data : [];
+  el('donations-count').textContent = allDonations.length + ' records';
+  renderDonationsTable(allDonations);
+  renderRecentDonations(allDonations.slice(0, 5));
+}
+
+function renderDonationsTable(list) {
+  const tbody = el('donations-tbody');
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zM8 12h8M12 8v8"/></svg><p>No donations yet</p></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map((d, i) => {
+    const date = new Date(d.createdAt);
+    return `<tr>
+      <td style="color:var(--muted); font-size:12px;">#${i + 1}</td>
+      <td><strong style="color:var(--success);">ZMW ${Number(d.amount).toLocaleString()}</strong></td>
+      <td><span class="badge badge-gold">${esc(d.currency || 'ZMW')}</span></td>
+      <td>${date.toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' })}</td>
+      <td style="color:var(--muted);">${date.toLocaleTimeString('en-ZM', { hour:'2-digit', minute:'2-digit' })}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderRecentDonations(list) {
+  const wrap = el('dash-recent-donations');
+  if (!list.length) { wrap.innerHTML = '<div class="empty-state"><p>No donations yet</p></div>'; return; }
+  wrap.innerHTML = `<table style="width:100%;"><thead><tr><th>Amount</th><th>Date</th></tr></thead><tbody>${list.map(d => {
+    const date = new Date(d.createdAt);
+    return `<tr><td><strong style="color:var(--success);">ZMW ${Number(d.amount).toLocaleString()}</strong></td><td style="color:var(--muted); font-size:12px;">${date.toLocaleDateString('en-ZM', { day:'2-digit', month:'short' })}</td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+/* ══════════════ DISCUSSIONS ══════════════ */
+async function loadDiscussions() {
+  const data = await apiFetch('/api/discussions');
+  allDiscussions = Array.isArray(data) ? data : [];
+  el('disc-count').textContent      = allDiscussions.length + ' posts';
+  el('dash-discussions').textContent = allDiscussions.length.toLocaleString();
+  renderDiscussions(allDiscussions);
+  renderRecentDiscussions(allDiscussions.slice(0, 3));
+}
+
+function renderDiscussions(list) {
+  const wrap = el('discussions-list');
+  if (!list.length) {
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><p>No discussions yet</p></div>`;
+    return;
+  }
+  wrap.innerHTML = list.map(d => {
+    const initials = d.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+    const date     = new Date(d.createdAt).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' });
+    return `<div class="disc-row">
+      <div class="disc-avatar">${esc(initials)}</div>
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span class="disc-title">${esc(d.title)}</span>
+          <span class="badge badge-blue">${esc(d.category)}</span>
+        </div>
+        <div class="disc-meta">${esc(d.name)} · ${date} · ${d.likes || 0} likes</div>
+        <div class="disc-body-preview">${esc(d.body).slice(0, 120)}${d.body.length > 120 ? '…' : ''}</div>
+      </div>
+      <div class="disc-actions">
+        <button class="btn btn-sm btn-danger" onclick="openDeleteModal('${d._id}', '${esc(d.title)}', '${esc(d.name)}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderRecentDiscussions(list) {
+  const wrap = el('dash-recent-discussions');
+  if (!list.length) { wrap.innerHTML = '<div class="empty-state"><p>No discussions yet</p></div>'; return; }
+  wrap.innerHTML = list.map(d => {
+    const initials = d.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+    return `<div class="disc-row">
+      <div class="disc-avatar" style="width:32px;height:32px;font-size:11px;">${esc(initials)}</div>
+      <div style="flex:1; min-width:0;">
+        <div class="disc-title" style="font-size:13px;">${esc(d.title)}</div>
+        <div class="disc-meta">${esc(d.name)} · <span class="badge badge-blue" style="font-size:10px;">${esc(d.category)}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ══════════════ LESSON OF THE WEEK ══════════════ */
+async function loadLesson() {
+  const data = await apiFetch('/api/lesson');
+  if (!data) {
+    el('dash-lesson-title').textContent = 'Not set';
+    return;
+  }
+  el('dash-lesson-title').textContent = data.title || 'Untitled';
+  el('lp-title').textContent = data.title || '—';
+  el('lp-verse').textContent = data.verse || '';
+  el('lp-body').textContent  = data.body  || '';
+
+  el('lesson-title').value = data.title || '';
+  el('lesson-verse').value = data.verse || '';
+  el('lesson-body').value  = data.body  || '';
+  el('lesson-url').value   = data.url   || '';
+  updateCharCounter('lesson-title', 'lesson-title-counter', 100);
+  updateCharCounter('lesson-body', 'lesson-body-counter', 1000);
+
+  if (data.theme) {
+    el('theme-heading').value = data.theme.heading || '';
+    el('theme-ref').value     = data.theme.ref     || '';
+    el('theme-body').value    = data.theme.body    || '';
+  }
+}
+
+async function saveLesson() {
+  const payload = {
+    title: el('lesson-title').value.trim(),
+    verse: el('lesson-verse').value.trim(),
+    body:  el('lesson-body').value.trim(),
+    url:   el('lesson-url').value.trim(),
+  };
+  if (!payload.title || !payload.body) { toast('Title and body are required', 'danger'); return; }
+  const res = await apiFetch('/api/lesson', { method: 'POST', body: JSON.stringify(payload) });
+  if (res && res.success) {
+    toast('Lesson saved!', 'success');
+    el('lp-title').textContent = payload.title;
+    el('lp-verse').textContent = payload.verse;
+    el('lp-body').textContent  = payload.body;
+    el('dash-lesson-title').textContent = payload.title;
+  } else {
+    toast('Save failed — check server connection', 'danger');
+  }
+}
+
+async function saveTheme() {
+  const payload = {
+    heading: el('theme-heading').value.trim(),
+    ref:     el('theme-ref').value.trim(),
+    body:    el('theme-body').value.trim(),
+  };
+  if (!payload.heading) { toast('Theme heading is required', 'danger'); return; }
+  const res = await apiFetch('/api/theme', { method: 'POST', body: JSON.stringify(payload) });
+  if (res && res.success) toast('Theme of the Month saved!', 'success');
+  else toast('Save failed — check server connection', 'danger');
+}
+
+/* ══════════════ ANNOUNCEMENTS ══════════════ */
+async function loadAnnouncements() {
+  const data = await apiFetch('/api/announcements');
+  allAnnouncements = Array.isArray(data) ? data : [];
+  el('ann-count-badge').textContent = allAnnouncements.length + ' active';
+  el('dash-ann-count').textContent  = allAnnouncements.length + ' announcements';
+  renderAnnouncementsList(allAnnouncements);
+  renderTickerPreview(allAnnouncements);
+}
+
+function renderTickerPreview(list) {
+  const preview = el('ann-ticker-preview');
+  if (!list.length) { preview.textContent = 'No announcements set'; return; }
+  preview.textContent = list.map(a => '· ' + a.text).join('   ');
+}
+
+function renderAnnouncementsList(list) {
+  const wrap = el('ann-list');
+  if (!list.length) {
+    wrap.innerHTML = `<div class="empty-state"><p>No announcements yet. Add one above.</p></div>`;
+    return;
+  }
+  wrap.innerHTML = list.map(a => {
+    const expires = a.expiresAt ? new Date(a.expiresAt).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' }) : 'Always';
+    return `<div class="ann-row">
+      <div class="ann-dot"></div>
+      <div class="ann-text">${esc(a.text)}</div>
+      <span class="badge badge-gray" style="margin-right:8px;">Until: ${expires}</span>
+      <div class="ann-actions">
+        <button class="btn btn-sm btn-danger" onclick="openDeleteAnnModal('${a._id}', '${esc(a.text)}')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addAnnouncement() {
+  const text    = el('ann-text').value.trim();
+  const expires = el('ann-expires').value;
+  if (!text) { toast('Announcement text is required', 'danger'); return; }
+  const payload = { text };
+  if (expires) payload.expiresAt = expires;
+  const res = await apiFetch('/api/announcements', { method: 'POST', body: JSON.stringify(payload) });
+  if (res && res.success) {
+    toast('Announcement added!', 'success');
+    el('ann-text').value    = '';
+    el('ann-expires').value = '';
+    loadAnnouncements();
+  } else {
+    toast('Failed to add — check server connection', 'danger');
+  }
+}
+
+function openDeleteAnnModal(id, text) {
+  deleteAnnId = id;
+  el('delete-ann-text').textContent = text;
+  el('delete-ann-modal').classList.add('open');
+}
+function closeDeleteAnnModal() {
+  deleteAnnId = null;
+  el('delete-ann-modal').classList.remove('open');
+}
+async function confirmDeleteAnn() {
+  if (!deleteAnnId) return;
+  const res = await apiFetch('/api/announcements/' + deleteAnnId, { method: 'DELETE' });
+  closeDeleteAnnModal();
+  if (res !== null) { toast('Announcement removed', 'success'); loadAnnouncements(); }
+  else toast('Delete failed', 'danger');
+}
+
+/* ══════════════ KIDS STORIES ══════════════ */
+async function loadStories() {
+  const data = await apiFetch('/api/stories');
+  allStories = Array.isArray(data) ? data : [];
+  const featured = allStories.filter(s => s.featured).length;
+  el('stories-total').textContent        = allStories.length;
+  el('stories-featured').textContent     = featured;
+  el('stories-count-badge').textContent  = allStories.length + ' stories';
+  el('dash-stories-count').textContent   = allStories.length + ' stories published';
+  renderStoriesList(allStories);
+}
+
+function renderStoriesList(list) {
+  const wrap = el('stories-list');
+  if (!list.length) {
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg><p>No stories yet. Add one above!</p></div>`;
+    return;
+  }
+  wrap.innerHTML = list.map(s => {
+    const emoji = { 'Noah': '🚢', 'David': '🪨', 'Jonah': '🐋', 'Esther': '👑', 'Creation': '🌍' };
+    const icon  = Object.entries(emoji).find(([k]) => s.title.includes(k))?.[1] || '📖';
+    return `<div class="story-row">
+      <div class="story-thumb">${s.imageUrl ? `<img src="${esc(s.imageUrl)}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;" onerror="this.parentElement.textContent='📖'"/>` : icon}</div>
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span class="story-title">${esc(s.title)}</span>
+          ${s.featured ? '<span class="badge badge-gold">Featured</span>' : ''}
+          ${s.ageGroup ? `<span class="badge badge-gray">${esc(s.ageGroup)}</span>` : ''}
+          ${s.tag ? `<span class="badge badge-blue">${esc(s.tag)}</span>` : ''}
+        </div>
+        <div class="story-meta">${new Date(s.createdAt).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' })}</div>
+        <div class="story-preview">${esc(s.preview || s.body || '').slice(0, 100)}…</div>
+      </div>
+      <div class="story-actions">
+        ${!s.featured ? `<button class="btn btn-sm btn-gold" onclick="featureStory('${s._id}')">Feature</button>` : ''}
+        <button class="btn btn-sm btn-danger" onclick="openDeleteStoryModal('${s._id}', '${esc(s.title)}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addStory() {
+  const payload = {
+    title:    el('story-title').value.trim(),
+    tag:      el('story-tag').value.trim(),
+    ageGroup: el('story-age').value,
+    preview:  el('story-preview-text').value.trim(),
+    body:     el('story-body').value.trim(),
+    imageUrl: el('story-img').value.trim(),
+    featured: el('story-featured').value === 'true',
+  };
+  if (!payload.title || !payload.body) { toast('Title and story body are required', 'danger'); return; }
+  const res = await apiFetch('/api/stories', { method: 'POST', body: JSON.stringify(payload) });
+  if (res && res.success) {
+    toast('Story published!', 'success');
+    ['story-title','story-tag','story-preview-text','story-body','story-img'].forEach(id => el(id).value = '');
+    el('story-age').value = 'All Ages';
+    el('story-featured').value = 'false';
+    loadStories();
+  } else {
+    toast('Publish failed — check server connection', 'danger');
+  }
+}
+
+async function featureStory(id) {
+  const res = await apiFetch('/api/stories/' + id + '/feature', { method: 'POST' });
+  if (res && res.success) { toast('Story set as featured!', 'success'); loadStories(); }
+  else toast('Failed — check server connection', 'danger');
+}
+
+function openDeleteStoryModal(id, title) {
+  deleteStoryId = id;
+  el('delete-story-title').textContent = title;
+  el('delete-story-modal').classList.add('open');
+}
+function closeDeleteStoryModal() {
+  deleteStoryId = null;
+  el('delete-story-modal').classList.remove('open');
+}
+async function confirmDeleteStory() {
+  if (!deleteStoryId) return;
+  const res = await apiFetch('/api/stories/' + deleteStoryId, { method: 'DELETE' });
+  closeDeleteStoryModal();
+  if (res !== null) { toast('Story deleted', 'success'); loadStories(); }
+  else toast('Delete failed', 'danger');
+}
+
+/* ══════════════ DISCUSSION DELETE ══════════════ */
+function openDeleteModal(id, title, author) {
+  deleteTargetId = id;
+  el('delete-disc-title').textContent  = title;
+  el('delete-disc-author').textContent = 'by ' + author;
+  el('delete-modal').classList.add('open');
+}
+function closeDeleteModal() {
+  deleteTargetId = null;
+  el('delete-modal').classList.remove('open');
+}
+async function confirmDelete() {
+  if (!deleteTargetId) return;
+  const res = await apiFetch('/api/discussions/' + deleteTargetId, { method: 'DELETE' });
+  closeDeleteModal();
+  if (res !== null) { toast('Discussion deleted', 'success'); loadDiscussions(); }
+  else toast('Delete failed', 'danger');
+}
+
+/* ══════════════ CONNECT / SETTINGS ══════════════ */
+function connectAndRefresh() {
+  const url = el('api-url-input').value.trim().replace(/\/$/, '');
+  if (!url) return;
+  API_URL = url;
+  localStorage.setItem('sda_admin_api', url);
+  el('settings-api-url').value = url;
+  toast('Connecting to ' + url + '…');
+  checkStatus();
+  loadAll();
+}
+function saveApiUrl() {
+  const url = el('settings-api-url').value.trim().replace(/\/$/, '');
+  if (!url) return;
+  API_URL = url;
+  localStorage.setItem('sda_admin_api', url);
+  el('api-url-input').value = url;
+  toast('API URL saved', 'success');
+  checkStatus();
+  loadAll();
+}
+
+/* ══════════════ CHAR COUNTERS ══════════════ */
+function setupCharCounters() {
+  const pairs = [
+    ['lesson-title', 'lesson-title-counter', 100],
+    ['lesson-body',  'lesson-body-counter',  1000],
+    ['ann-text',     'ann-text-counter',     200],
+    ['story-preview-text', 'story-preview-counter', 200],
+    ['story-body',   'story-body-counter',   3000],
+  ];
+  pairs.forEach(([inputId, counterId, max]) => {
+    const input   = el(inputId);
+    const counter = el(counterId);
+    if (!input || !counter) return;
+    input.addEventListener('input', () => updateCharCounter(inputId, counterId, max));
+  });
+}
+function updateCharCounter(inputId, counterId, max) {
+  const len = (el(inputId)?.value || '').length;
+  const counter = el(counterId);
+  if (!counter) return;
+  counter.textContent = `${len} / ${max}`;
+  counter.classList.toggle('warn', len > max * 0.9);
+}
+
+/* ══════════════ HELPERS ══════════════ */
+function el(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+function toast(msg, type = 'info') {
+  const wrap = el('toast-container');
+  const t    = document.createElement('div');
+  t.className    = 'toast t-' + type;
+  t.textContent  = msg;
+  wrap.appendChild(t);
+  requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('show')));
+  setTimeout(() => {
+    t.classList.remove('show');
+    t.addEventListener('transitionend', () => t.remove(), { once: true });
+  }, 3200);
+}
+</script>
+</body>
+</html>
