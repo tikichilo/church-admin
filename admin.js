@@ -12,11 +12,11 @@ let allStories       = [];
 let allAnnouncements = [];
 
 /* ══════════════ INIT ══════════════ */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   el('api-url-input').value    = API_URL;
   el('settings-api-url').value = API_URL;
   setupCharCounters();
-  checkStatus();
+  await checkStatus();  // wait for connection check before loading data
   loadAll();
 });
 
@@ -42,20 +42,34 @@ function showPage(name) {
 }
 
 /* ══════════════ API ══════════════ */
-async function apiFetch(path, options = {}) {
+async function apiFetch(path, options = {}, _retry = true) {
   try {
     const res = await fetch(API_URL + path, {
       headers: { 'Content-Type': 'application/json' },
       ...options,
     });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      console.error('apiFetch', options.method || 'GET', path, res.status, body);
+      const errBody = await res.json().catch(() => ({}));
+      console.error('apiFetch', options.method || 'GET', path, res.status, errBody);
+      // Render free tier returns 502/503 while spinning up — retry once after 4s
+      if (_retry && (res.status === 502 || res.status === 503)) {
+        console.warn('Server warming up, retrying in 4s…');
+        toast('Server waking up, retrying…', 'info');
+        await new Promise(r => setTimeout(r, 4000));
+        return apiFetch(path, options, false);
+      }
       return null;
     }
     return await res.json();
   } catch (e) {
     console.error('apiFetch network error', path, e.message);
+    // Network error — also retry once (handles Render cold start TCP timeout)
+    if (_retry) {
+      console.warn('Network error, retrying in 4s…');
+      toast('Connection issue, retrying…', 'info');
+      await new Promise(r => setTimeout(r, 4000));
+      return apiFetch(path, options, false);
+    }
     return null;
   }
 }
@@ -64,18 +78,25 @@ async function apiFetch(path, options = {}) {
 async function checkStatus() {
   const dot  = el('status-dot');
   const text = el('status-text');
-  const data = await apiFetch('/api/fund');
+  dot.className    = 'status-dot offline';
+  text.textContent = 'Checking…';
+  const data = await apiFetch('/api/fund', {}, false); // no retry here, loadAll handles it
   if (data !== null) {
     dot.className    = 'status-dot';
     text.textContent = 'Connected';
   } else {
     dot.className    = 'status-dot offline';
-    text.textContent = 'Offline';
+    text.textContent = 'Offline — server may be starting up';
   }
 }
 
 /* ══════════════ LOAD ALL ══════════════ */
 async function loadAll() {
+  // If status is offline, wait for server to come up before hammering all endpoints
+  const dot = el('status-dot');
+  if (dot && dot.classList.contains('offline')) {
+    await new Promise(r => setTimeout(r, 2000));
+  }
   await Promise.all([
     loadFund(),
     loadDonations(),
@@ -428,8 +449,8 @@ async function confirmDeleteStory() {
   if (!deleteStoryId) return;
   const res = await apiFetch('/api/stories/' + deleteStoryId, { method: 'DELETE' });
   closeDeleteStoryModal();
-  if (res !== null) { toast('Story deleted', 'success'); loadStories(); }
-  else toast('Delete failed', 'danger');
+  if (res && res.success) { toast('Story deleted', 'success'); loadStories(); }
+  else toast('Delete failed — check server connection', 'danger');
 }
 
 /* ══════════════ DISCUSSION DELETE ══════════════ */
@@ -448,8 +469,8 @@ async function confirmDelete() {
   if (!deleteTargetId) return;
   const res = await apiFetch('/api/discussions/' + deleteTargetId, { method: 'DELETE' });
   closeDeleteModal();
-  if (res !== null) { toast('Discussion deleted', 'success'); loadDiscussions(); }
-  else toast('Delete failed', 'danger');
+  if (res && res.success) { toast('Discussion deleted', 'success'); loadDiscussions(); }
+  else toast('Delete failed — check server connection', 'danger');
 }
 
 /* ══════════════ CONNECT / SETTINGS ══════════════ */
