@@ -26,21 +26,28 @@
  *  DELETE /api/stories/:id           — Delete a story
  *
  * Usage:
- *  npm install express mongoose dotenv cors
+ *  npm install express mongoose dotenv cors bcryptjs jsonwebtoken
  *  node server.js
  *
  * .env file needed:
  *  MONGO_URI=mongodb+srv://<user>:<pass>@cluster.mongodb.net/makenicentral
  *  PORT=3000
+ *  JWT_SECRET=your-very-long-random-secret-string-change-this
+ *  INVITE_CODE=MAKENI-2025
  */
 
 'use strict';
 
-const express  = require('express');
-const mongoose = require('mongoose');
-const cors     = require('cors');
-const path     = require('path');
+const express   = require('express');
+const mongoose  = require('mongoose');
+const cors      = require('cors');
+const path      = require('path');
+const bcrypt    = require('bcryptjs');
+const jwt       = require('jsonwebtoken');
 require('dotenv').config();
+
+const JWT_SECRET  = process.env.JWT_SECRET  || 'change-this-secret-in-production';
+const INVITE_CODE = (process.env.INVITE_CODE || 'MAKENI-2025').toUpperCase();
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -55,9 +62,9 @@ app.use(express.json());
 // Serve all HTML, CSS, JS, images in the same folder
 app.use(express.static(path.join(__dirname)));
 
-// Root → admin panel
+// Root → login page (admin.html requires auth)
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'admin.html'));
+  res.sendFile(path.join(__dirname, 'login.html'));
 });
 
 
@@ -67,6 +74,92 @@ app.get('/', (req, res) => {
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✦ MongoDB connected'))
   .catch(err => { console.error('MongoDB connection error:', err); process.exit(1); });
+
+
+/* ═══════════════════════════════════════════════
+   AUTH — User Model & Middleware
+═══════════════════════════════════════════════ */
+
+const userSchema = new mongoose.Schema({
+  name:      { type: String, required: true, maxlength: 100 },
+  email:     { type: String, required: true, unique: true, lowercase: true },
+  password:  { type: String, required: true },
+  role:      { type: String, default: 'admin', enum: ['admin', 'superadmin'] },
+  createdAt: { type: Date, default: Date.now },
+});
+const User = mongoose.model('User', userSchema);
+
+// Middleware: verify JWT and attach user to req
+function requireAuth(req, res, next) {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Unauthorized — please sign in' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Session expired — please sign in again' });
+  }
+}
+
+
+/* ═══════════════════════════════════════════════
+   AUTH ROUTES
+═══════════════════════════════════════════════ */
+
+// POST /api/auth/signup
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { name, email, password, inviteCode } = req.body;
+    if (!name || !email || !password || !inviteCode) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+    if ((inviteCode || '').toUpperCase() !== INVITE_CODE) {
+      return res.status(403).json({ error: 'Invalid invite code' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    const exists = await User.findOne({ email: email.toLowerCase() });
+    if (exists) return res.status(409).json({ error: 'An account with this email already exists' });
+
+    const hash = await bcrypt.hash(password, 12);
+    await User.create({ name: name.slice(0, 100), email, password: hash });
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('POST /api/auth/signup:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/auth/login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(401).json({ error: 'Invalid email or password' });
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(401).json({ error: 'Invalid email or password' });
+
+    const token = jwt.sign(
+      { id: user._id, email: user.email, name: user.name, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+    res.json({ token, name: user.name, email: user.email, role: user.role });
+  } catch (err) {
+    console.error('POST /api/auth/login:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/auth/me — verify token is still valid
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json({ name: req.user.name, email: req.user.email, role: req.user.role });
+});
 
 
 /* ═══════════════════════════════════════════════
@@ -282,11 +375,11 @@ app.get('/api/stories', async (req, res) => {
 
 
 /* ═══════════════════════════════════════════════
-   ROUTES — ADMIN
+   ROUTES — ADMIN  (all require valid JWT)
 ═══════════════════════════════════════════════ */
 
 // ── GET /api/donations ──
-app.get('/api/donations', async (req, res) => {
+app.get('/api/donations', requireAuth, async (req, res) => {
   try {
     const donations = await Donation.find().sort({ createdAt: -1 }).lean();
     res.json(donations);
@@ -297,7 +390,7 @@ app.get('/api/donations', async (req, res) => {
 });
 
 // ── DELETE /api/discussions/:id ──
-app.delete('/api/discussions/:id', async (req, res) => {
+app.delete('/api/discussions/:id', requireAuth, async (req, res) => {
   try {
     const discussion = await Discussion.findByIdAndDelete(req.params.id);
     if (!discussion) return res.status(404).json({ error: 'Not found' });
@@ -309,7 +402,7 @@ app.delete('/api/discussions/:id', async (req, res) => {
 });
 
 // ── POST /api/fund/goal ──
-app.post('/api/fund/goal', async (req, res) => {
+app.post('/api/fund/goal', requireAuth, async (req, res) => {
   try {
     const { goal } = req.body;
     if (!goal || isNaN(goal) || Number(goal) <= 0) {
@@ -328,7 +421,7 @@ app.post('/api/fund/goal', async (req, res) => {
 });
 
 // ── POST /api/lesson ──
-app.post('/api/lesson', async (req, res) => {
+app.post('/api/lesson', requireAuth, async (req, res) => {
   try {
     const { title, verse, body, url } = req.body;
     if (!title || !body) return res.status(400).json({ error: 'Title and body required' });
@@ -347,7 +440,7 @@ app.post('/api/lesson', async (req, res) => {
 });
 
 // ── POST /api/theme ──
-app.post('/api/theme', async (req, res) => {
+app.post('/api/theme', requireAuth, async (req, res) => {
   try {
     const { heading, ref, body } = req.body;
     if (!heading) return res.status(400).json({ error: 'Heading required' });
@@ -365,7 +458,7 @@ app.post('/api/theme', async (req, res) => {
 });
 
 // ── POST /api/announcements ──
-app.post('/api/announcements', async (req, res) => {
+app.post('/api/announcements', requireAuth, async (req, res) => {
   try {
     const { text, expiresAt } = req.body;
     if (!text) return res.status(400).json({ error: 'Text required' });
@@ -381,7 +474,7 @@ app.post('/api/announcements', async (req, res) => {
 });
 
 // ── DELETE /api/announcements/:id ──
-app.delete('/api/announcements/:id', async (req, res) => {
+app.delete('/api/announcements/:id', requireAuth, async (req, res) => {
   try {
     const ann = await Announcement.findByIdAndDelete(req.params.id);
     if (!ann) return res.status(404).json({ error: 'Not found' });
@@ -393,7 +486,7 @@ app.delete('/api/announcements/:id', async (req, res) => {
 });
 
 // ── POST /api/stories ──
-app.post('/api/stories', async (req, res) => {
+app.post('/api/stories', requireAuth, async (req, res) => {
   try {
     const { title, tag, ageGroup, preview, body, imageUrl, featured } = req.body;
     if (!title || !body) return res.status(400).json({ error: 'Title and body required' });
@@ -415,7 +508,7 @@ app.post('/api/stories', async (req, res) => {
 });
 
 // ── POST /api/stories/:id/feature ──
-app.post('/api/stories/:id/feature', async (req, res) => {
+app.post('/api/stories/:id/feature', requireAuth, async (req, res) => {
   try {
     await Story.updateMany({ featured: true }, { featured: false });
     const story = await Story.findByIdAndUpdate(
@@ -432,7 +525,7 @@ app.post('/api/stories/:id/feature', async (req, res) => {
 });
 
 // ── DELETE /api/stories/:id ──
-app.delete('/api/stories/:id', async (req, res) => {
+app.delete('/api/stories/:id', requireAuth, async (req, res) => {
   try {
     const story = await Story.findByIdAndDelete(req.params.id);
     if (!story) return res.status(404).json({ error: 'Not found' });

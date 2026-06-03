@@ -11,8 +11,41 @@ let allDiscussions   = [];
 let allStories       = [];
 let allAnnouncements = [];
 
+/* ══════════════ AUTH GUARD ══════════════ */
+function getToken() {
+  return localStorage.getItem('sda_admin_token') || '';
+}
+
+function logout() {
+  localStorage.removeItem('sda_admin_token');
+  localStorage.removeItem('sda_admin_user');
+  window.location.href = 'login.html';
+}
+
+// Verify token on load; redirect to login if missing or expired
+async function checkAuth() {
+  const token = getToken();
+  if (!token) { window.location.href = 'login.html'; return false; }
+  try {
+    const res = await fetch(API_URL + '/api/auth/me', {
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    if (res.status === 401) { logout(); return false; }
+    const user = await res.json();
+    // Show user name in topbar
+    const nameEl = document.getElementById('admin-user-name');
+    if (nameEl) nameEl.textContent = user.name || user.email || 'Admin';
+    return true;
+  } catch (e) {
+    // Network error — allow through so loadAll can handle retry
+    return true;
+  }
+}
+
 /* ══════════════ INIT ══════════════ */
 document.addEventListener('DOMContentLoaded', async () => {
+  const authed = await checkAuth();
+  if (!authed) return;
   el('api-url-input').value    = API_URL;
   el('settings-api-url').value = API_URL;
   setupCharCounters();
@@ -45,9 +78,18 @@ function showPage(name) {
 async function apiFetch(path, options = {}, _retry = true) {
   try {
     const res = await fetch(API_URL + path, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getToken(),
+      },
       ...options,
     });
+    // If unauthorized, token is missing or expired — redirect to login
+    if (res.status === 401) {
+      toast('Session expired. Redirecting to login…', 'danger');
+      setTimeout(() => logout(), 1500);
+      return null;
+    }
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
       console.error('apiFetch', options.method || 'GET', path, res.status, errBody);
