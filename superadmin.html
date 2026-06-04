@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Super Admin — Makeni Central SDA</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --navy:      #041534;
+  --navy-lt:   #0a2248;
+  --gold:      #e6c364;
+  --gold-dim:  #b8960d;
+  --gold-text: #755b00;
+  --surface:   #f5f5f7;
+  --white:     #ffffff;
+  --border:    #e0e0e6;
+  --text:      #1a1c24;
+  --muted:     #5a5c6a;
+  --danger:    #c62828;
+  --danger-lt: #fdecea;
+  --success:   #2e7d32;
+  --success-lt:#e8f5e9;
+  --warning:   #e65100;
+  --warning-lt:#fff3e0;
+  --info:      #0277bd;
+  --info-lt:   #e1f5fe;
+  --radius:    10px;
+  --sidebar-w: 220px;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--surface);
+  color: var(--text);
+  display: flex;
+  min-height: 100vh;
+  font-size: 14px;
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--navy);
+  min-height: 100vh;
+  position: fixed;
+  top: 0; left: 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  box-shadow: 4px 0 24px rgba(0,0,0,0.18);
+}
+.sidebar-brand {
+  padding: 24px 20px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.sidebar-brand .logo-ring {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: 1.5px solid var(--gold);
+  background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Playfair Display', serif;
+  font-size: 17px; color: var(--gold); font-weight: 700;
+  margin-bottom: 10px;
+}
+.sidebar-brand h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 13px; color: #fff; font-weight: 600; line-height: 1.3;
+}
+.sidebar-brand p {
+  font-size: 10px; color: var(--gold); letter-spacing: 0.12em;
+  text-transform: uppercase; margin-top: 3px;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 16px 0;
+  overflow-y: auto;
+}
+.nav-label {
+  font-size: 9px; font-weight: 600; letter-spacing: 0.15em;
+  text-transform: uppercase; color: rgba(255,255,255,0.3);
+  padding: 10px 20px 6px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 20px;
+  color: rgba(255,255,255,0.65);
+  cursor: pointer;
+  transition: all 0.18s;
+  font-size: 13px; font-weight: 500;
+  border-left: 3px solid transparent;
+  user-select: none;
+}
+.nav-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+.nav-item.active {
+  background: rgba(230,195,100,0.1);
+  color: var(--gold);
+  border-left-color: var(--gold);
+}
+.nav-item svg { opacity: 0.7; flex-shrink: 0; }
+.nav-item.active svg { opacity: 1; }
+
+.sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+.admin-chip {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px;
+}
+.admin-avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%; background: rgba(230,195,100,0.15);
+  border: 1.5px solid rgba(230,195,100,0.3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: var(--gold);
+  flex-shrink: 0;
+}
+.admin-info { overflow: hidden; }
+.admin-info strong { display: block; font-size: 12px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.admin-info span   { font-size: 10px; color: var(--gold); letter-spacing: 0.06em; }
+.btn-logout {
+  width: 100%; padding: 8px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 7px; color: rgba(255,255,255,0.6);
+  font-size: 12px; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; transition: all 0.18s;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn-logout:hover { background: rgba(198,40,40,0.2); border-color: rgba(198,40,40,0.4); color: #ff8a80; }
+
+/* ── MAIN CONTENT ── */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+  padding: 0 32px;
+  height: 60px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 50;
+}
+.topbar-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 18px; color: var(--navy); font-weight: 700;
+}
+.topbar-right {
+  display: flex; align-items: center; gap: 12px;
+}
+.badge-superadmin {
+  background: var(--navy); color: var(--gold);
+  font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; padding: 4px 10px; border-radius: 100px;
+}
+.btn-go-admin {
+  padding: 7px 14px;
+  background: var(--surface); border: 1.5px solid var(--border);
+  border-radius: 7px; font-size: 12px; font-weight: 600;
+  color: var(--navy); cursor: pointer; transition: all 0.18s;
+  font-family: 'DM Sans', sans-serif;
+  display: flex; align-items: center; gap: 6px;
+  text-decoration: none;
+}
+.btn-go-admin:hover { border-color: var(--navy); }
+
+.content {
+  padding: 32px;
+  flex: 1;
+}
+
+/* ── SECTIONS ── */
+.section { display: none; }
+.section.active { display: block; }
+
+.section-header {
+  margin-bottom: 24px;
+}
+.section-header h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 22px; color: var(--navy); font-weight: 700;
+}
+.section-header p { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+/* ── STAT CARDS ── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.stat-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--gold);
+}
+.stat-label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.stat-value { font-size: 28px; font-weight: 700; color: var(--navy); margin: 6px 0 2px; font-family: 'DM Mono', monospace; }
+.stat-sub   { font-size: 11px; color: var(--muted); }
+
+/* ── TABLES ── */
+.table-wrap {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.table-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap;
+}
+.table-header h3 { font-size: 14px; font-weight: 600; color: var(--navy); }
+table {
+  width: 100%; border-collapse: collapse;
+}
+th {
+  padding: 11px 16px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px; color: var(--text);
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #fafafa; }
+
+/* ── BADGES ── */
+.badge {
+  display: inline-flex; align-items: center;
+  padding: 3px 9px; border-radius: 100px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+}
+.badge-admin     { background: var(--info-lt);    color: var(--info); }
+.badge-superadmin-sm { background: rgba(4,21,52,0.1); color: var(--navy); }
+.badge-blocked   { background: var(--danger-lt);  color: var(--danger); }
+.badge-active    { background: var(--success-lt); color: var(--success); }
+
+/* ── ACTION BUTTONS ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px; border-radius: 7px;
+  font-size: 12px; font-weight: 600; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; border: 1.5px solid transparent; transition: all 0.18s;
+}
+.btn-sm { padding: 4px 9px; font-size: 11px; }
+.btn-primary { background: var(--navy); color: #fff; border-color: var(--navy); }
+.btn-primary:hover { background: var(--navy-lt); }
+.btn-danger  { background: var(--danger-lt); color: var(--danger); border-color: rgba(198,40,40,0.2); }
+.btn-danger:hover  { background: var(--danger); color: #fff; }
+.btn-success { background: var(--success-lt); color: var(--success); border-color: rgba(46,125,50,0.2); }
+.btn-success:hover { background: var(--success); color: #fff; }
+.btn-ghost   { background: transparent; color: var(--muted); border-color: var(--border); }
+.btn-ghost:hover { color: var(--navy); border-color: var(--navy); }
+
+.actions-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* ── DB MANAGER ── */
+.db-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.db-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.db-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.db-card-title { font-size: 13px; font-weight: 600; color: var(--navy); }
+.db-count {
+  font-family: 'DM Mono', monospace;
+  font-size: 22px; font-weight: 700; color: var(--navy);
+  margin-bottom: 4px;
+}
+.db-count span { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+.fill-bar {
+  height: 6px; border-radius: 100px;
+  background: var(--border); overflow: hidden; margin: 10px 0;
+}
+.fill-bar-inner {
+  height: 100%; border-radius: 100px;
+  transition: width 0.6s ease;
+}
+.fill-low    { background: var(--success); }
+.fill-medium { background: #f9a825; }
+.fill-high   { background: var(--warning); }
+.fill-full   { background: var(--danger); }
+
+.db-actions {
+  display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap;
+}
+.db-older-input {
+  width: 70px; padding: 5px 8px;
+  border: 1.5px solid var(--border); border-radius: 6px;
+  font-size: 12px; font-family: 'DM Mono', monospace; outline: none;
+  transition: border-color 0.2s;
+}
+.db-older-input:focus { border-color: var(--gold-dim); }
+
+/* ── AUDIT LOG ── */
+.audit-filters {
+  display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.filter-select, .filter-input {
+  padding: 7px 11px; border: 1.5px solid var(--border); border-radius: 7px;
+  font-size: 12px; font-family: 'DM Sans', sans-serif;
+  outline: none; background: var(--white); color: var(--text);
+  transition: border-color 0.2s;
+}
+.filter-select:focus, .filter-input:focus { border-color: var(--gold-dim); }
+
+.audit-action {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px; font-weight: 500;
+  padding: 3px 8px; border-radius: 5px;
+  background: var(--navy); color: var(--gold);
+}
+.audit-details { font-size: 11px; color: var(--muted); max-width: 300px; }
+.audit-ts      { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+.pagination {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 20px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--muted);
+  flex-wrap: wrap;
+}
+.page-btn {
+  padding: 5px 11px; border: 1.5px solid var(--border);
+  border-radius: 6px; font-size: 12px; background: var(--white);
+  cursor: pointer; transition: all 0.18s; font-family: 'DM Sans', sans-serif;
+}
+.page-btn:hover:not(:disabled) { border-color: var(--navy); color: var(--navy); }
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.page-btn.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+
+/* ── MODAL ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(4,21,52,0.55);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: none; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--white);
+  border-radius: 14px;
+  padding: 32px;
+  max-width: 420px; width: 100%;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.25);
+  animation: modalIn 0.25s ease;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95) translateY(12px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+.modal h3 { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--navy); margin-bottom: 10px; }
+.modal p  { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ── TOAST ── */
+#toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--navy); color: #fff;
+  padding: 11px 20px; border-radius: 100px;
+  font-size: 13px; font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  transition: transform 0.3s ease; z-index: 999; white-space: nowrap;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.danger  { background: var(--danger); }
+#toast.success { background: var(--success); }
+#toast.info    { background: var(--info); }
+
+/* ── EMPTY STATE ── */
+.empty {
+  text-align: center; padding: 48px 20px;
+  color: var(--muted); font-size: 13px;
+}
+.empty svg { opacity: 0.3; margin-bottom: 12px; }
+
+/* ── LOADING ── */
+.loading-row td {
+  text-align: center; padding: 32px;
+  color: var(--muted); font-size: 13px;
+}
+.spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid rgba(4,21,52,0.15);
+  border-top-color: var(--navy);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle; margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  .sidebar { width: 60px; }
+  .sidebar-brand h2, .sidebar-brand p, .nav-item span,
+  .admin-info, .btn-logout span { display: none; }
+  .main { margin-left: 60px; }
+  .content { padding: 20px 16px; }
+  .nav-item { padding: 12px; justify-content: center; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="logo-ring">M</div>
+    <h2>Makeni Central SDA</h2>
+    <p>Super Admin</p>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-label">Overview</div>
+    <div class="nav-item active" data-section="overview" onclick="switchSection('overview', this)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      <span>Dashboard</span>
+    </div>
+
+    <div class="nav-label">Management</div>
+    <div class="nav-item" data-section="admins" onclick="switchSection('admins', this)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span>Admins</span>
+    </div>
+    <div class="nav-item" data-section="audit" onclick="switchSection('audit', this)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      <span>Audit Log</span>
+    </div>
+
+    <div class="nav-label">Database</div>
+    <div class="nav-item" data-section="database" onclick="switchSection('database', this)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+      <span>Database</span>
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="admin-chip">
+      <div class="admin-avatar" id="sidebar-avatar">S</div>
+      <div class="admin-info">
+        <strong id="sidebar-name">Super Admin</strong>
+        <span>superadmin</span>
+      </div>
+    </div>
+    <button class="btn-logout" onclick="logout()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      <span>Sign Out</span>
+    </button>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <header class="topbar">
+    <div class="topbar-title" id="topbar-title">Dashboard</div>
+    <div class="topbar-right">
+      <span class="badge-superadmin">⬡ Super Admin</span>
+      <a href="admin.html" class="btn-go-admin">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Admin Panel
+      </a>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- ══════════════ OVERVIEW ══════════════ -->
+    <section class="section active" id="section-overview">
+      <div class="section-header">
+        <h2>Overview</h2>
+        <p>System health and quick stats across all collections.</p>
+      </div>
+
+      <div class="stats-grid" id="overview-stats">
+        <div class="stat-card"><div class="stat-label">Admins</div><div class="stat-value" id="stat-admins">—</div><div class="stat-sub">registered accounts</div></div>
+        <div class="stat-card"><div class="stat-label">Discussions</div><div class="stat-value" id="stat-discussions">—</div><div class="stat-sub">youth board posts</div></div>
+        <div class="stat-card"><div class="stat-label">Stories</div><div class="stat-value" id="stat-stories">—</div><div class="stat-sub">kids corner</div></div>
+        <div class="stat-card"><div class="stat-label">Announcements</div><div class="stat-value" id="stat-announcements">—</div><div class="stat-sub">active notices</div></div>
+        <div class="stat-card"><div class="stat-label">Donations</div><div class="stat-value" id="stat-donations">—</div><div class="stat-sub">giving records</div></div>
+        <div class="stat-card"><div class="stat-label">Audit Logs</div><div class="stat-value" id="stat-auditlogs">—</div><div class="stat-sub">tracked actions</div></div>
+      </div>
+
+      <!-- Recent audit activity on overview -->
+      <div class="table-wrap">
+        <div class="table-header"><h3>Recent Activity</h3></div>
+        <table>
+          <thead><tr>
+            <th>Admin</th><th>Action</th><th>Details</th><th>Time</th>
+          </tr></thead>
+          <tbody id="overview-audit-body">
+            <tr class="loading-row"><td colspan="4"><span class="spinner"></span>Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══════════════ ADMINS ══════════════ -->
+    <section class="section" id="section-admins">
+      <div class="section-header">
+        <h2>Admin Accounts</h2>
+        <p>View, block, promote, or remove admin accounts.</p>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <h3>All Admins</h3>
+          <button class="btn btn-ghost btn-sm" onclick="loadAdmins()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.36"/></svg>
+            Refresh
+          </button>
+        </div>
+        <table>
+          <thead><tr>
+            <th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last Seen</th><th>Last Action</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="admins-body">
+            <tr class="loading-row"><td colspan="7"><span class="spinner"></span>Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══════════════ AUDIT LOG ══════════════ -->
+    <section class="section" id="section-audit">
+      <div class="section-header">
+        <h2>Audit Log</h2>
+        <p>Every admin action is recorded here with timestamp and IP address.</p>
+      </div>
+
+      <div class="audit-filters">
+        <select class="filter-select" id="audit-filter-admin" onchange="loadAudit(1)">
+          <option value="">All Admins</option>
+        </select>
+        <select class="filter-select" id="audit-filter-action" onchange="loadAudit(1)">
+          <option value="">All Actions</option>
+          <option>OPEN_DASHBOARD</option>
+          <option>LOGIN</option>
+          <option>LOGOUT</option>
+          <option>CREATE_ANNOUNCEMENT</option>
+          <option>DELETE_ANNOUNCEMENT</option>
+          <option>UPDATE_LESSON</option>
+          <option>UPDATE_THEME</option>
+          <option>CREATE_STORY</option>
+          <option>DELETE_STORY</option>
+          <option>FEATURE_STORY</option>
+          <option>DELETE_DISCUSSION</option>
+          <option>UPDATE_FUND_GOAL</option>
+          <option>BLOCK_ADMIN</option>
+          <option>UNBLOCK_ADMIN</option>
+          <option>DELETE_ADMIN</option>
+          <option>CHANGE_ROLE</option>
+          <option>CLEAR_COLLECTION</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="loadAudit(1)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Filter
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="clearAuditFilters()">Clear</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Admin</th><th>Action</th><th>Details</th><th>IP</th><th>Time</th>
+          </tr></thead>
+          <tbody id="audit-body">
+            <tr class="loading-row"><td colspan="5"><span class="spinner"></span>Loading…</td></tr>
+          </tbody>
+        </table>
+        <div class="pagination" id="audit-pagination"></div>
+      </div>
+    </section>
+
+    <!-- ══════════════ DATABASE ══════════════ -->
+    <section class="section" id="section-database">
+      <div class="section-header">
+        <h2>Database Manager</h2>
+        <p>View collection sizes and clear old data to free up space. Deletions are permanent and logged.</p>
+      </div>
+
+      <div class="db-grid" id="db-grid">
+        <!-- filled by JS -->
+      </div>
+    </section>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- CONFIRM MODAL -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal">
+    <h3 id="modal-title">Are you sure?</h3>
+    <p id="modal-body">This action cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm-btn" onclick="confirmModal()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════
+   INIT & AUTH
+══════════════════════════════════════ */
+const API = () => (localStorage.getItem('sda_admin_api') || '').replace(/\/+$/, '');
+const TOKEN = () => localStorage.getItem('sda_admin_token') || '';
+
+function logout() {
+  localStorage.removeItem('sda_admin_token');
+  localStorage.removeItem('sda_admin_user');
+  window.location.href = 'login.html';
+}
+
+async function apiFetch(path, opts = {}) {
+  try {
+    const res = await fetch(API() + path, {
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN() },
+      ...opts,
+    });
+    if (res.status === 401) { logout(); return null; }
+    if (res.status === 403) {
+      const d = await res.json().catch(() => ({}));
+      toast(d.error || 'Access denied', 'danger');
+      return null;
+    }
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      toast(d.error || 'Request failed', 'danger');
+      return null;
+    }
+    return await res.json();
+  } catch (e) {
+    toast('Network error — check connection', 'danger');
+    return null;
+  }
+}
+
+async function init() {
+  const token = TOKEN();
+  if (!token) { window.location.href = 'login.html'; return; }
+
+  const me = await apiFetch('/api/auth/me');
+  if (!me) return;
+  if (me.role !== 'superadmin') {
+    toast('Super admin access required', 'danger');
+    setTimeout(() => window.location.href = 'admin.html', 1500);
+    return;
+  }
+
+  const initials = me.name?.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase() || 'S';
+  document.getElementById('sidebar-avatar').textContent = initials;
+  document.getElementById('sidebar-name').textContent   = me.name || 'Super Admin';
+
+  loadOverview();
+  loadAdmins();
+  loadAudit(1);
+  loadDbStats();
+}
+
+/* ══════════════════════════════════════
+   NAVIGATION
+══════════════════════════════════════ */
+const sectionTitles = {
+  overview: 'Dashboard',
+  admins:   'Admin Accounts',
+  audit:    'Audit Log',
+  database: 'Database Manager',
+};
+
+function switchSection(id, el) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('section-' + id).classList.add('active');
+  el.classList.add('active');
+  document.getElementById('topbar-title').textContent = sectionTitles[id] || id;
+}
+
+/* ══════════════════════════════════════
+   TOAST
+══════════════════════════════════════ */
+function toast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = type ? 'show ' + type : 'show';
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.className = '', 3200);
+}
+
+/* ══════════════════════════════════════
+   MODAL
+══════════════════════════════════════ */
+let _modalCallback = null;
+
+function openModal(title, body, confirmLabel, type, cb) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').textContent  = body;
+  const btn = document.getElementById('modal-confirm-btn');
+  btn.textContent  = confirmLabel || 'Confirm';
+  btn.className    = 'btn ' + (type === 'danger' ? 'btn-danger' : 'btn-primary');
+  _modalCallback   = cb;
+  document.getElementById('confirm-modal').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('confirm-modal').classList.remove('show');
+  _modalCallback = null;
+}
+function confirmModal() {
+  closeModal();
+  if (_modalCallback) _modalCallback();
+}
+document.getElementById('confirm-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+/* ══════════════════════════════════════
+   HELPERS
+══════════════════════════════════════ */
+function fmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' })
+       + ' ' + dt.toLocaleTimeString('en-ZM', { hour:'2-digit', minute:'2-digit' });
+}
+function timeAgo(d) {
+  if (!d) return '—';
+  const sec = Math.floor((Date.now() - new Date(d)) / 1000);
+  if (sec < 60)   return sec + 's ago';
+  if (sec < 3600) return Math.floor(sec/60) + 'm ago';
+  if (sec < 86400)return Math.floor(sec/3600) + 'h ago';
+  return Math.floor(sec/86400) + 'd ago';
+}
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ══════════════════════════════════════
+   OVERVIEW
+══════════════════════════════════════ */
+async function loadOverview() {
+  const stats = await apiFetch('/api/superadmin/db-stats');
+  if (stats) {
+    document.getElementById('stat-admins').textContent       = stats.admins;
+    document.getElementById('stat-discussions').textContent  = stats.discussions;
+    document.getElementById('stat-stories').textContent      = stats.stories;
+    document.getElementById('stat-announcements').textContent= stats.announcements;
+    document.getElementById('stat-donations').textContent    = stats.donations;
+    document.getElementById('stat-auditlogs').textContent    = stats.auditLogs;
+  }
+
+  // Recent 8 audit entries
+  const audit = await apiFetch('/api/superadmin/audit?limit=8');
+  const tbody = document.getElementById('overview-audit-body');
+  if (!audit || !audit.logs.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted)">No activity yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = audit.logs.map(l => `
+    <tr>
+      <td><strong>${esc(l.adminName)}</strong></td>
+      <td><span class="audit-action">${esc(l.action)}</span></td>
+      <td class="audit-details">${esc(JSON.stringify(l.details || {})).slice(0,80)}</td>
+      <td class="audit-ts">${timeAgo(l.createdAt)}</td>
+    </tr>
+  `).join('');
+}
+
+/* ══════════════════════════════════════
+   ADMINS
+══════════════════════════════════════ */
+let _currentAdminId = null;
+
+async function loadAdmins() {
+  const admins = await apiFetch('/api/superadmin/admins');
+  const tbody  = document.getElementById('admins-body');
+  const auditFilter = document.getElementById('audit-filter-admin');
+
+  if (!admins) return;
+  if (!admins.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--muted)">No admins found</td></tr>';
+    return;
+  }
+
+  // Populate audit filter dropdown
+  auditFilter.innerHTML = '<option value="">All Admins</option>'
+    + admins.map(a => `<option value="${a._id}">${esc(a.name)}</option>`).join('');
+
+  const me = JSON.parse(localStorage.getItem('sda_admin_user') || '{}');
+
+  tbody.innerHTML = admins.map(a => {
+    const isMe      = a.email === me.email;
+    const blocked   = a.blocked;
+    const roleBadge = a.role === 'superadmin'
+      ? `<span class="badge badge-superadmin-sm">superadmin</span>`
+      : `<span class="badge badge-admin">admin</span>`;
+    const statusBadge = blocked
+      ? `<span class="badge badge-blocked">Blocked</span>`
+      : `<span class="badge badge-active">Active</span>`;
+
+    return `
+      <tr>
+        <td><strong>${esc(a.name)}</strong>${isMe ? ' <span style="font-size:10px;color:var(--gold-text)">(you)</span>' : ''}</td>
+        <td style="color:var(--muted)">${esc(a.email)}</td>
+        <td>${roleBadge}</td>
+        <td>${statusBadge}</td>
+        <td class="audit-ts">${timeAgo(a.lastSeen)}</td>
+        <td><span class="audit-action" style="font-size:10px">${esc(a.lastAction || 'none')}</span></td>
+        <td>
+          <div class="actions-cell">
+            ${!isMe ? `
+              <button class="btn btn-sm ${blocked ? 'btn-success' : 'btn-danger'}"
+                onclick="toggleBlock('${a._id}', '${esc(a.name)}', ${blocked})">
+                ${blocked ? 'Unblock' : 'Block'}
+              </button>
+              <button class="btn btn-sm btn-ghost"
+                onclick="changeRole('${a._id}', '${esc(a.name)}', '${a.role}')">
+                ${a.role === 'superadmin' ? 'Demote' : 'Promote'}
+              </button>
+              <button class="btn btn-sm btn-danger"
+                onclick="deleteAdmin('${a._id}', '${esc(a.name)}')">
+                Delete
+              </button>
+            ` : '<span style="font-size:11px;color:var(--muted)">—</span>'}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function toggleBlock(id, name, currentlyBlocked) {
+  const action = currentlyBlocked ? 'unblock' : 'block';
+  openModal(
+    `${action.charAt(0).toUpperCase() + action.slice(1)} ${name}?`,
+    currentlyBlocked
+      ? `${name} will regain access to the admin panel.`
+      : `${name} will be suspended and cannot log in until unblocked.`,
+    currentlyBlocked ? 'Unblock' : 'Block',
+    currentlyBlocked ? 'primary' : 'danger',
+    async () => {
+      const res = await apiFetch(`/api/superadmin/admins/${id}/block`, {
+        method: 'POST',
+        body: JSON.stringify({ blocked: !currentlyBlocked }),
+      });
+      if (res) {
+        toast(`${name} ${!currentlyBlocked ? 'blocked' : 'unblocked'} successfully`, !currentlyBlocked ? 'danger' : 'success');
+        loadAdmins();
+      }
+    }
+  );
+}
+
+async function changeRole(id, name, currentRole) {
+  const newRole = currentRole === 'superadmin' ? 'admin' : 'superadmin';
+  openModal(
+    `${newRole === 'superadmin' ? 'Promote' : 'Demote'} ${name}?`,
+    newRole === 'superadmin'
+      ? `${name} will become a Super Admin with full access including this panel.`
+      : `${name} will be demoted to a regular admin.`,
+    newRole === 'superadmin' ? 'Promote' : 'Demote',
+    newRole === 'superadmin' ? 'primary' : 'danger',
+    async () => {
+      const res = await apiFetch(`/api/superadmin/admins/${id}/role`, {
+        method: 'POST',
+        body: JSON.stringify({ role: newRole }),
+      });
+      if (res) {
+        toast(`${name} is now ${newRole}`, 'success');
+        loadAdmins();
+      }
+    }
+  );
+}
+
+async function deleteAdmin(id, name) {
+  openModal(
+    `Delete ${name}?`,
+    `This will permanently remove ${name}'s account. Their audit history will remain. This cannot be undone.`,
+    'Delete Account',
+    'danger',
+    async () => {
+      const res = await apiFetch(`/api/superadmin/admins/${id}`, { method: 'DELETE' });
+      if (res) {
+        toast(`${name}'s account deleted`, 'danger');
+        loadAdmins();
+      }
+    }
+  );
+}
+
+/* ══════════════════════════════════════
+   AUDIT LOG
+══════════════════════════════════════ */
+let _auditPage = 1;
+
+async function loadAudit(page = 1) {
+  _auditPage = page;
+  const adminId = document.getElementById('audit-filter-admin')?.value || '';
+  const action  = document.getElementById('audit-filter-action')?.value || '';
+
+  let url = `/api/superadmin/audit?page=${page}&limit=30`;
+  if (adminId) url += `&adminId=${adminId}`;
+  if (action)  url += `&action=${encodeURIComponent(action)}`;
+
+  const data  = await apiFetch(url);
+  const tbody = document.getElementById('audit-body');
+  const pager = document.getElementById('audit-pagination');
+
+  if (!data) return;
+  if (!data.logs.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--muted)">No matching logs</td></tr>';
+    pager.innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = data.logs.map(l => `
+    <tr>
+      <td>
+        <strong>${esc(l.adminName)}</strong>
+        <div style="font-size:11px;color:var(--muted)">${esc(l.adminEmail)}</div>
+      </td>
+      <td><span class="audit-action">${esc(l.action)}</span></td>
+      <td class="audit-details">${esc(JSON.stringify(l.details || {}).slice(0,100))}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${esc(l.ip || '—')}</td>
+      <td class="audit-ts">${fmtDate(l.createdAt)}</td>
+    </tr>
+  `).join('');
+
+  // Pagination
+  const pages = data.pages;
+  if (pages <= 1) { pager.innerHTML = ''; return; }
+  let html = `<span>Page ${page} of ${pages} &nbsp;·&nbsp; ${data.total} entries</span>`;
+  html += `<button class="page-btn" onclick="loadAudit(${page-1})" ${page===1?'disabled':''}>← Prev</button>`;
+  for (let p = Math.max(1,page-2); p <= Math.min(pages, page+2); p++) {
+    html += `<button class="page-btn ${p===page?'active':''}" onclick="loadAudit(${p})">${p}</button>`;
+  }
+  html += `<button class="page-btn" onclick="loadAudit(${page+1})" ${page===pages?'disabled':''}>Next →</button>`;
+  pager.innerHTML = html;
+}
+
+function clearAuditFilters() {
+  document.getElementById('audit-filter-admin').value  = '';
+  document.getElementById('audit-filter-action').value = '';
+  loadAudit(1);
+}
+
+/* ══════════════════════════════════════
+   DATABASE MANAGER
+══════════════════════════════════════ */
+const COLLECTIONS = [
+  { key: 'discussions',   label: 'Discussions',   icon: '💬', note: 'Youth board posts', max: 500 },
+  { key: 'stories',       label: 'Stories',        icon: '📖', note: 'Kids corner stories', max: 200 },
+  { key: 'announcements', label: 'Announcements',  icon: '📢', note: 'Ticker notices', max: 100 },
+  { key: 'donations',     label: 'Donations',      icon: '💛', note: 'Giving records', max: 2000 },
+  { key: 'lessons',       label: 'Lessons',        icon: '📚', note: 'Lesson of the week (single doc)', max: 5 },
+  { key: 'themes',        label: 'Themes',         icon: '✨', note: 'Theme of the month (single doc)', max: 5 },
+  { key: 'auditlogs',     label: 'Audit Logs',     icon: '🗒️', note: 'Action history', max: 5000 },
+];
+
+async function loadDbStats() {
+  const stats = await apiFetch('/api/superadmin/db-stats');
+  if (!stats) return;
+
+  const grid = document.getElementById('db-grid');
+  grid.innerHTML = COLLECTIONS.map(c => {
+    const count   = stats[c.key] ?? 0;
+    const pct     = Math.min(100, Math.round((count / c.max) * 100));
+    const fillCls = pct >= 90 ? 'fill-full' : pct >= 70 ? 'fill-high' : pct >= 40 ? 'fill-medium' : 'fill-low';
+
+    return `
+      <div class="db-card" id="db-card-${c.key}">
+        <div class="db-card-header">
+          <div class="db-card-title">${c.icon} ${c.label}</div>
+          <button class="btn btn-ghost btn-sm" onclick="loadDbStats()" title="Refresh">↻</button>
+        </div>
+        <div class="db-count">${count} <span>records</span></div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${c.note}</div>
+        <div class="fill-bar"><div class="fill-bar-inner ${fillCls}" style="width:${pct}%"></div></div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:12px">${pct}% of suggested limit (${c.max})</div>
+        <div class="db-actions">
+          <input class="db-older-input" type="number" placeholder="days" min="1" id="days-${c.key}" title="Delete older than N days (leave empty to clear all)"/>
+          <button class="btn btn-sm btn-danger" onclick="clearCollection('${c.key}', '${c.label}')">
+            Clear
+          </button>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px">
+          Enter days to delete records older than N days, or leave empty to clear all.
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function clearCollection(key, label) {
+  const daysInput = document.getElementById('days-' + key);
+  const days      = parseInt(daysInput?.value) || 0;
+  const scope     = days > 0 ? `older than ${days} days` : 'ALL records';
+
+  openModal(
+    `Clear ${label}?`,
+    `You are about to permanently delete ${scope} from the ${label} collection. This cannot be undone.`,
+    `Delete ${scope}`,
+    'danger',
+    async () => {
+      let url = `/api/superadmin/db/${key}`;
+      if (days > 0) url += `?olderThan=${days}`;
+
+      const res = await apiFetch(url, { method: 'DELETE' });
+      if (res) {
+        toast(`Deleted ${res.deleted} record(s) from ${label}`, 'success');
+        if (daysInput) daysInput.value = '';
+        loadDbStats();
+        loadOverview();
+      }
+    }
+  );
+}
+
+/* ══════════════════════════════════════
+   START
+══════════════════════════════════════ */
+init();
+</script>
+</body>
+</html>

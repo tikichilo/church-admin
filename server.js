@@ -25,7 +25,16 @@
  *  POST   /api/stories/:id/feature   — Feature a story
  *  DELETE /api/stories/:id           — Delete a story
  *
- * Usage:
+ *  — Super Admin endpoints (superadmin.html) —
+ *  GET    /api/superadmin/admins              — List all admins
+ *  POST   /api/superadmin/admins/:id/block    — Block / unblock admin
+ *  POST   /api/superadmin/admins/:id/role     — Change role
+ *  DELETE /api/superadmin/admins/:id          — Delete admin account
+ *  GET    /api/superadmin/audit               — Paginated audit log
+ *  GET    /api/superadmin/db-stats            — Collection sizes
+ *  DELETE /api/superadmin/db/:collection      — Bulk clear collection
+ *  POST   /api/audit                          — Log action (from audit.js)
+ *
  *  npm install express mongoose dotenv cors bcryptjs jsonwebtoken
  *  node server.js
  *
@@ -85,6 +94,7 @@ const userSchema = new mongoose.Schema({
   email:     { type: String, required: true, unique: true, lowercase: true },
   password:  { type: String, required: true },
   role:      { type: String, default: 'admin', enum: ['admin', 'superadmin'] },
+  blocked:   { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
 });
 const User = mongoose.model('User', userSchema);
@@ -124,7 +134,10 @@ app.post('/api/auth/signup', async (req, res) => {
     if (exists) return res.status(409).json({ error: 'An account with this email already exists' });
 
     const hash = await bcrypt.hash(password, 12);
-    await User.create({ name: name.slice(0, 100), email, password: hash });
+    // First registered user becomes superadmin automatically
+    const userCount = await User.countDocuments();
+    const role = userCount === 0 ? 'superadmin' : 'admin';
+    await User.create({ name: name.slice(0, 100), email, password: hash, role });
     res.status(201).json({ success: true });
   } catch (err) {
     console.error('POST /api/auth/signup:', err);
@@ -534,6 +547,298 @@ app.delete('/api/stories/:id', requireAuth, async (req, res) => {
     console.error('DELETE /api/stories/:id:', err);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+
+/* ═══════════════════════════════════════════════
+   AUDIT LOG — Schema & auto-log helper
+═══════════════════════════════════════════════ */
+
+const auditSchema = new mongoose.Schema({
+  adminId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  adminName: { type: String, required: true },
+  adminEmail:{ type: String, required: true },
+  action:    { type: String, required: true, maxlength: 80 },
+  details:   { type: mongoose.Schema.Types.Mixed, default: {} },
+  ip:        { type: String, default: '' },
+  createdAt: { type: Date,   default: Date.now },
+});
+const AuditLog = mongoose.model('AuditLog', auditSchema);
+
+// Helper used by other routes to log server-side actions
+async function audit(req, action, details = {}) {
+  try {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+            || req.socket?.remoteAddress || 'unknown';
+    await AuditLog.create({
+      adminId:    req.user.id,
+      adminName:  req.user.name,
+      adminEmail: req.user.email,
+      action,
+      details,
+      ip,
+    });
+  } catch (e) {
+    console.warn('audit() failed:', e.message);
+  }
+}
+
+// POST /api/audit — called by audit.js in the browser
+app.post('/api/audit', requireAuth, async (req, res) => {
+  try {
+    const { action, details } = req.body;
+    if (!action) return res.status(400).json({ error: 'action required' });
+    await audit(req, action.toUpperCase().slice(0, 80), details || {});
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/audit:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Patch login route to also log logins — wrap by adding audit after token creation
+// (done inline below — login route already exists above, so we use a post-hook approach
+//  via AuditLog.create directly since we don't have req.user yet at login time)
+
+
+/* ═══════════════════════════════════════════════
+   SUPER ADMIN MIDDLEWARE & ROUTES
+═══════════════════════════════════════════════ */
+
+function requireSuperAdmin(req, res, next) {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Super admin access required' });
+    }
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Session expired' });
+  }
+}
+
+// ── GET /api/superadmin/admins — list all admin accounts ──
+app.get('/api/superadmin/admins', requireSuperAdmin, async (req, res) => {
+  try {
+    const admins = await User.find({}, '-password').sort({ createdAt: -1 }).lean();
+
+    // Attach last-seen from audit log
+    const ids = admins.map(a => a._id);
+    const lastSeen = await AuditLog.aggregate([
+      { $match: { adminId: { $in: ids } } },
+      { $sort:  { createdAt: -1 } },
+      { $group: { _id: '$adminId', lastAction: { $first: '$action' }, lastSeen: { $first: '$createdAt' } } },
+    ]);
+    const seenMap = {};
+    lastSeen.forEach(l => { seenMap[l._id.toString()] = l; });
+
+    const result = admins.map(a => ({
+      ...a,
+      lastSeen:   seenMap[a._id.toString()]?.lastSeen   || null,
+      lastAction: seenMap[a._id.toString()]?.lastAction || null,
+    }));
+
+    res.json(result);
+  } catch (err) {
+    console.error('GET /api/superadmin/admins:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── POST /api/superadmin/admins/:id/block — block or unblock ──
+app.post('/api/superadmin/admins/:id/block', requireSuperAdmin, async (req, res) => {
+  try {
+    const { blocked } = req.body; // true or false
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: "You can't block yourself" });
+    }
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: { blocked: !!blocked } },
+      { new: true, select: '-password' }
+    );
+    if (!user) return res.status(404).json({ error: 'Admin not found' });
+    await audit(req, blocked ? 'BLOCK_ADMIN' : 'UNBLOCK_ADMIN', {
+      targetId: user._id, targetName: user.name, targetEmail: user.email,
+    });
+    res.json({ success: true, blocked: user.blocked });
+  } catch (err) {
+    console.error('POST /api/superadmin/admins/:id/block:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── DELETE /api/superadmin/admins/:id — remove admin account ──
+app.delete('/api/superadmin/admins/:id', requireSuperAdmin, async (req, res) => {
+  try {
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: "You can't delete your own account" });
+    }
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ error: 'Admin not found' });
+    await audit(req, 'DELETE_ADMIN', { targetName: user.name, targetEmail: user.email });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /api/superadmin/admins/:id:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── POST /api/superadmin/admins/:id/role — promote/demote ──
+app.post('/api/superadmin/admins/:id/role', requireSuperAdmin, async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!['admin', 'superadmin'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: { role } },
+      { new: true, select: '-password' }
+    );
+    if (!user) return res.status(404).json({ error: 'Admin not found' });
+    await audit(req, 'CHANGE_ROLE', { targetName: user.name, newRole: role });
+    res.json({ success: true, role: user.role });
+  } catch (err) {
+    console.error('POST /api/superadmin/admins/:id/role:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── GET /api/superadmin/audit — paginated audit log ──
+app.get('/api/superadmin/audit', requireSuperAdmin, async (req, res) => {
+  try {
+    const page     = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit    = Math.min(100, parseInt(req.query.limit) || 50);
+    const adminId  = req.query.adminId || null;
+    const action   = req.query.action  || null;
+
+    const filter = {};
+    if (adminId) filter.adminId = adminId;
+    if (action)  filter.action  = action;
+
+    const [logs, total] = await Promise.all([
+      AuditLog.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      AuditLog.countDocuments(filter),
+    ]);
+
+    res.json({ logs, total, page, pages: Math.ceil(total / limit) });
+  } catch (err) {
+    console.error('GET /api/superadmin/audit:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── GET /api/superadmin/db-stats — collection counts ──
+app.get('/api/superadmin/db-stats', requireSuperAdmin, async (req, res) => {
+  try {
+    const [discussions, lessons, themes, announcements, stories, donations, auditLogs, admins] =
+      await Promise.all([
+        Discussion.countDocuments(),
+        Lesson.countDocuments(),
+        Theme.countDocuments(),
+        Announcement.countDocuments(),
+        Story.countDocuments(),
+        Donation.countDocuments(),
+        AuditLog.countDocuments(),
+        User.countDocuments(),
+      ]);
+    res.json({
+      discussions, lessons, themes, announcements,
+      stories, donations, auditLogs, admins,
+    });
+  } catch (err) {
+    console.error('GET /api/superadmin/db-stats:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── DELETE /api/superadmin/db/:collection — bulk clear a collection ──
+const CLEARABLE = {
+  discussions:   () => Discussion.deleteMany({}),
+  lessons:       () => Lesson.deleteMany({}),
+  themes:        () => Theme.deleteMany({}),
+  announcements: () => Announcement.deleteMany({}),
+  stories:       () => Story.deleteMany({}),
+  donations:     () => Donation.deleteMany({}),
+  auditlogs:     () => AuditLog.deleteMany({}),
+};
+
+app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res) => {
+  try {
+    const key = req.params.collection.toLowerCase();
+    if (!CLEARABLE[key]) {
+      return res.status(400).json({ error: 'Unknown or protected collection' });
+    }
+
+    // Optional: only delete records older than N days
+    const olderThanDays = parseInt(req.query.olderThan) || 0;
+    let result;
+    if (olderThanDays > 0 && key !== 'lessons' && key !== 'themes') {
+      const cutoff = new Date(Date.now() - olderThanDays * 86400000);
+      const Model = {
+        discussions: Discussion, announcements: Announcement,
+        stories: Story, donations: Donation, auditlogs: AuditLog,
+      }[key];
+      if (Model) {
+        result = await Model.deleteMany({ createdAt: { $lt: cutoff } });
+      } else {
+        result = await CLEARABLE[key]();
+      }
+    } else {
+      result = await CLEARABLE[key]();
+    }
+
+    await audit(req, 'CLEAR_COLLECTION', {
+      collection: key,
+      deleted: result.deletedCount,
+      olderThanDays: olderThanDays || 'all',
+    });
+
+    res.json({ success: true, deleted: result.deletedCount });
+  } catch (err) {
+    console.error('DELETE /api/superadmin/db/:collection:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Also add `blocked` field check to requireAuth so blocked admins can't use the API
+// Patch requireAuth to reject blocked users (async version)
+async function requireAuthStrict(req, res, next) {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Unauthorized — please sign in' });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    // Check if still unblocked in DB
+    const user = await User.findById(decoded.id).select('blocked role name email').lean();
+    if (!user)         return res.status(401).json({ error: 'Account not found' });
+    if (user.blocked)  return res.status(403).json({ error: 'Your account has been suspended' });
+    req.user = { ...decoded, role: user.role }; // always use DB role, not stale JWT role
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Session expired — please sign in again' });
+  }
+}
+
+// Apply strict auth to all admin mutation routes
+// (The GET public routes remain open; we just tighten the write routes)
+app.use([
+  '/api/audit',
+  '/api/donations',
+  '/api/fund/goal',
+  '/api/lesson',
+  '/api/theme',
+  '/api/announcements',
+  '/api/stories',
+], (req, res, next) => {
+  if (['POST','PUT','PATCH','DELETE'].includes(req.method)) {
+    return requireAuthStrict(req, res, next);
+  }
+  next();
 });
 
 

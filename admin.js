@@ -179,8 +179,13 @@ async function updateFundGoal() {
   const val = parseFloat(el('fund-goal-input').value);
   if (!val || val <= 0) { toast('Enter a valid goal amount', 'danger'); return; }
   const res = await apiFetch('/api/fund/goal', { method: 'POST', body: JSON.stringify({ goal: val }) });
-  if (res && res.success) { toast('Fund goal updated!', 'success'); loadFund(); }
-  else toast('Update failed — check server connection', 'danger');
+  if (res && res.success) {
+    toast('Fund goal updated!', 'success');
+    await logAudit('UPDATE_FUND_GOAL', { newGoal: val });
+    loadFund();
+  } else {
+    toast('Update failed — check server connection', 'danger');
+  }
 }
 
 /* ══════════════ DONATIONS ══════════════ */
@@ -320,6 +325,7 @@ async function saveLesson() {
     el('lp-verse').textContent = payload.verse;
     el('lp-body').textContent  = payload.body;
     el('dash-lesson-title').textContent = payload.title;
+    await logAudit('SAVE_LESSON', { title: payload.title, verse: payload.verse });
   } else {
     toast('Save failed — check server connection', 'danger');
   }
@@ -333,8 +339,12 @@ async function saveTheme() {
   };
   if (!payload.heading) { toast('Theme heading is required', 'danger'); return; }
   const res = await apiFetch('/api/theme', { method: 'POST', body: JSON.stringify(payload) });
-  if (res && res.success) toast('Theme of the Month saved!', 'success');
-  else toast('Save failed — check server connection', 'danger');
+  if (res && res.success) {
+    toast('Theme of the Month saved!', 'success');
+    await logAudit('SAVE_THEME', { heading: payload.heading, ref: payload.ref });
+  } else {
+    toast('Save failed — check server connection', 'danger');
+  }
 }
 
 /* ══════════════ ANNOUNCEMENTS ══════════════ */
@@ -383,6 +393,7 @@ async function addAnnouncement() {
     toast('Announcement added!', 'success');
     el('ann-text').value    = '';
     el('ann-expires').value = '';
+    await logAudit('ADD_ANNOUNCEMENT', { text: payload.text, expiresAt: payload.expiresAt || null });
     loadAnnouncements();
   } else {
     toast('Failed to add — check server connection', 'danger');
@@ -401,10 +412,16 @@ function closeDeleteAnnModal() {
 }
 async function confirmDeleteAnn() {
   if (!deleteAnnId) return;
+  const ann = allAnnouncements.find(a => a._id === deleteAnnId);
   const res = await apiFetch('/api/announcements/' + deleteAnnId, { method: 'DELETE' });
   closeDeleteAnnModal();
-  if (res && res.success) { toast('Announcement removed', 'success'); loadAnnouncements(); }
-  else toast('Delete failed — check server connection', 'danger');
+  if (res && res.success) {
+    toast('Announcement removed', 'success');
+    await logAudit('DELETE_ANNOUNCEMENT', { id: deleteAnnId, text: ann?.text || '' });
+    loadAnnouncements();
+  } else {
+    toast('Delete failed — check server connection', 'danger');
+  }
 }
 
 /* ══════════════ KIDS STORIES ══════════════ */
@@ -465,6 +482,7 @@ async function addStory() {
     ['story-title','story-tag','story-preview-text','story-body','story-img'].forEach(id => el(id).value = '');
     el('story-age').value = 'All Ages';
     el('story-featured').value = 'false';
+    await logAudit('PUBLISH_STORY', { title: payload.title, ageGroup: payload.ageGroup, featured: payload.featured });
     loadStories();
   } else {
     toast('Publish failed — check server connection', 'danger');
@@ -472,9 +490,15 @@ async function addStory() {
 }
 
 async function featureStory(id) {
+  const story = allStories.find(s => s._id === id);
   const res = await apiFetch('/api/stories/' + id + '/feature', { method: 'POST' });
-  if (res && res.success) { toast('Story set as featured!', 'success'); loadStories(); }
-  else toast('Failed — check server connection', 'danger');
+  if (res && res.success) {
+    toast('Story set as featured!', 'success');
+    await logAudit('FEATURE_STORY', { id, title: story?.title || '' });
+    loadStories();
+  } else {
+    toast('Failed — check server connection', 'danger');
+  }
 }
 
 function openDeleteStoryModal(id) {
@@ -489,10 +513,16 @@ function closeDeleteStoryModal() {
 }
 async function confirmDeleteStory() {
   if (!deleteStoryId) return;
+  const story = allStories.find(s => s._id === deleteStoryId);
   const res = await apiFetch('/api/stories/' + deleteStoryId, { method: 'DELETE' });
   closeDeleteStoryModal();
-  if (res && res.success) { toast('Story deleted', 'success'); loadStories(); }
-  else toast('Delete failed — check server connection', 'danger');
+  if (res && res.success) {
+    toast('Story deleted', 'success');
+    await logAudit('DELETE_STORY', { id: deleteStoryId, title: story?.title || '' });
+    loadStories();
+  } else {
+    toast('Delete failed — check server connection', 'danger');
+  }
 }
 
 /* ══════════════ DISCUSSION DELETE ══════════════ */
@@ -509,10 +539,16 @@ function closeDeleteModal() {
 }
 async function confirmDelete() {
   if (!deleteTargetId) return;
+  const disc = allDiscussions.find(d => d._id === deleteTargetId);
   const res = await apiFetch('/api/discussions/' + deleteTargetId, { method: 'DELETE' });
   closeDeleteModal();
-  if (res && res.success) { toast('Discussion deleted', 'success'); loadDiscussions(); }
-  else toast('Delete failed — check server connection', 'danger');
+  if (res && res.success) {
+    toast('Discussion deleted', 'success');
+    await logAudit('DELETE_DISCUSSION', { id: deleteTargetId, title: disc?.title || '', author: disc?.name || '' });
+    loadDiscussions();
+  } else {
+    toast('Delete failed — check server connection', 'danger');
+  }
 }
 
 /* ══════════════ CONNECT / SETTINGS ══════════════ */
