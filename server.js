@@ -90,12 +90,14 @@ mongoose.connect(process.env.MONGO_URI)
 ═══════════════════════════════════════════════ */
 
 const userSchema = new mongoose.Schema({
-  name:      { type: String, required: true, maxlength: 100 },
-  email:     { type: String, required: true, unique: true, lowercase: true },
-  password:  { type: String, required: true },
-  role:      { type: String, default: 'admin', enum: ['admin', 'superadmin'] },
-  blocked:   { type: Boolean, default: false },
-  createdAt: { type: Date, default: Date.now },
+  name:       { type: String, required: true, maxlength: 100 },
+  email:      { type: String, required: true, unique: true, lowercase: true },
+  password:   { type: String, required: true },
+  role:       { type: String, default: 'admin', enum: ['admin', 'superadmin'] },
+  blocked:    { type: Boolean, default: false },
+  lastSeen:   { type: Date, default: null },
+  lastAction: { type: String, default: null },
+  createdAt:  { type: Date, default: Date.now },
 });
 const User = mongoose.model('User', userSchema);
 
@@ -171,7 +173,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 // GET /api/auth/me — verify token is still valid
 app.get('/api/auth/me', requireAuth, (req, res) => {
-  res.json({ name: req.user.name, email: req.user.email, role: req.user.role });
+  res.json({ id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role });
 });
 
 
@@ -637,8 +639,8 @@ app.get('/api/superadmin/admins', requireSuperAdmin, async (req, res) => {
 
     const result = admins.map(a => ({
       ...a,
-      lastSeen:   seenMap[a._id.toString()]?.lastSeen   || null,
-      lastAction: seenMap[a._id.toString()]?.lastAction || null,
+      lastSeen:   seenMap[a._id.toString()]?.lastSeen   || a.lastSeen   || null,
+      lastAction: seenMap[a._id.toString()]?.lastAction || a.lastAction || null,
     }));
 
     res.json(result);
@@ -813,11 +815,13 @@ async function requireAuthStrict(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Unauthorized — please sign in' });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    // Check if still unblocked in DB
     const user = await User.findById(decoded.id).select('blocked role name email').lean();
-    if (!user)         return res.status(401).json({ error: 'Account not found' });
-    if (user.blocked)  return res.status(403).json({ error: 'Your account has been suspended' });
-    req.user = { ...decoded, role: user.role }; // always use DB role, not stale JWT role
+    if (!user)        return res.status(401).json({ error: 'Account not found' });
+    if (user.blocked) return res.status(403).json({ error: 'Your account has been suspended' });
+    req.user = { ...decoded, role: user.role };
+    // Record last seen + last action (fire-and-forget, never block the request)
+    const action = `${req.method} ${req.path}`;
+    User.findByIdAndUpdate(decoded.id, { lastSeen: new Date(), lastAction: action }).catch(() => {});
     next();
   } catch (e) {
     return res.status(401).json({ error: 'Session expired — please sign in again' });

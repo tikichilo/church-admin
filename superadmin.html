@@ -688,6 +688,8 @@ async function init() {
     return;
   }
 
+  _currentAdminId = me._id || me.id || null;
+
   const initials = me.name?.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase() || 'S';
   document.getElementById('sidebar-avatar').textContent = initials;
   document.getElementById('sidebar-name').textContent   = me.name || 'Super Admin';
@@ -828,7 +830,7 @@ async function loadAdmins() {
   const me = JSON.parse(localStorage.getItem('sda_admin_user') || '{}');
 
   tbody.innerHTML = admins.map(a => {
-    const isMe      = a.email === me.email;
+    const isMe      = a._id === _currentAdminId;
     const blocked   = a.blocked;
     const roleBadge = a.role === 'superadmin'
       ? `<span class="badge badge-superadmin-sm">superadmin</span>`
