@@ -32,9 +32,22 @@ async function checkAuth() {
     });
     if (res.status === 401) { logout(); return false; }
     const user = await res.json();
-    // Show user name in topbar
-    const nameEl = document.getElementById('admin-user-name');
-    if (nameEl) nameEl.textContent = user.name || user.email || 'Admin';
+
+    // Show user name + avatar initial in sidebar footer
+    const nameEl   = document.getElementById('admin-user-name');
+    const avatarEl = document.getElementById('admin-user-avatar');
+    const displayName = user.name || user.email || 'Admin';
+    if (nameEl)   nameEl.textContent   = displayName;
+    if (avatarEl) avatarEl.textContent = displayName.charAt(0).toUpperCase();
+
+    // Show Super Admin link only for superadmins
+    if (user.role === 'superadmin') {
+      const link  = document.getElementById('superadmin-nav-link');
+      const label = document.getElementById('superadmin-nav-label');
+      if (link)  link.style.display  = 'flex';
+      if (label) label.style.display = 'block';
+    }
+
     return true;
   } catch (e) {
     // Network error — allow through so loadAll can handle retry
