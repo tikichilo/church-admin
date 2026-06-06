@@ -579,7 +579,7 @@ app.get('/api/superadmin/admins', requireSuperAdmin, async (req, res) => {
 app.post('/api/superadmin/admins/:id/block', requireSuperAdmin, async (req, res) => {
   try {
     const { blocked } = req.body;
-    if (req.params.id === req.user.id) {
+    if (String(req.params.id) === String(req.user.id)) {
       return res.status(400).json({ error: "You can't block yourself" });
     }
     const user = await User.findByIdAndUpdate(
@@ -598,7 +598,7 @@ app.post('/api/superadmin/admins/:id/block', requireSuperAdmin, async (req, res)
 
 app.delete('/api/superadmin/admins/:id', requireSuperAdmin, async (req, res) => {
   try {
-    if (req.params.id === req.user.id) {
+    if (String(req.params.id) === String(req.user.id)) {
       return res.status(400).json({ error: "You can't delete your own account" });
     }
     const user = await User.findByIdAndDelete(req.params.id);
