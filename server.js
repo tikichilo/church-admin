@@ -699,6 +699,41 @@ app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res)
   }
 });
 
+/* ═══════════════════════════════════════════════
+   CRON JOBS
+═══════════════════════════════════════════════ */
+const cron = require('node-cron');
+
+// Every Thursday at midnight — delete expired announcements & reset lesson/theme
+cron.schedule('0 0 * * 4', async () => {
+  try {
+    const now = new Date();
+
+    // Delete announcements that have passed their expiry date
+    const annResult = await Announcement.deleteMany({
+      expiresAt: { $ne: null, $lte: now },
+    });
+
+    // Clear the lesson of the week and verse (theme)
+    const lessonResult = await Lesson.deleteMany({});
+    const themeResult  = await Theme.deleteMany({});
+
+    console.log(`[CRON] Thursday cleanup — removed ${annResult.deletedCount} announcement(s), cleared ${lessonResult.deletedCount} lesson(s) and ${themeResult.deletedCount} theme(s)`);
+  } catch (err) {
+    console.error('[CRON] Thursday cleanup failed:', err);
+  }
+});
+
+// Every 30 minutes — ping self to prevent Render spin-down
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+cron.schedule('*/30 * * * *', async () => {
+  try {
+    const res = await fetch(`${SELF_URL}/api/fund`);
+    console.log(`[CRON] Keep-alive ping → ${res.status}`);
+  } catch (err) {
+    console.error('[CRON] Keep-alive ping failed:', err);
+  }
+});
 
 /* ═══════════════════════════════════════════════
    START
