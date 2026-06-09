@@ -676,9 +676,18 @@ async function apiFetch(path, opts = {}) {
   }
 }
 
+// Decode JWT payload locally (no network needed)
+function decodeToken(token) {
+  try { return JSON.parse(atob(token.split('.')[1])); } catch { return null; }
+}
+
 async function init() {
   const token = TOKEN();
   if (!token) { window.location.href = 'login.html'; return; }
+
+  // Check expiry locally before hitting the network
+  const payload = decodeToken(token);
+  if (!payload || Date.now() / 1000 > payload.exp) { logout(); return; }
 
   const me = await apiFetch('/api/auth/me');
   if (!me) return;
@@ -689,6 +698,7 @@ async function init() {
   }
 
   _currentAdminId = me._id || me.id || null;
+  startSessionWatcher();
 
   const initials = me.name?.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase() || 'S';
   document.getElementById('sidebar-avatar').textContent = initials;
@@ -699,6 +709,30 @@ async function init() {
   loadAudit(1);
   loadDbStats();
 }
+
+// Auto-logout exactly when the token expires (handles tab left open)
+function startSessionWatcher() {
+  const token = TOKEN();
+  if (!token) return;
+  const payload = decodeToken(token);
+  if (!payload) { logout(); return; }
+  const msLeft = (payload.exp * 1000) - Date.now();
+  if (msLeft <= 0) { logout(); return; }
+  setTimeout(() => {
+    toast('Your session has expired. Redirecting to login…', 'danger');
+    setTimeout(logout, 1500);
+  }, msLeft);
+}
+
+// Re-check token when the user switches back to this tab after being away
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    const token = TOKEN();
+    if (!token) { logout(); return; }
+    const payload = decodeToken(token);
+    if (!payload || Date.now() / 1000 > payload.exp) logout();
+  }
+});
 
 /* ══════════════════════════════════════
    NAVIGATION

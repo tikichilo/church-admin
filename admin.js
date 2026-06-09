@@ -22,15 +22,25 @@ function logout() {
   window.location.href = 'login.html';
 }
 
+// Decode JWT payload locally (no network needed)
+function decodeToken(token) {
+  try { return JSON.parse(atob(token.split('.')[1])); } catch { return null; }
+}
+
 // Verify token on load; redirect to login if missing or expired
 async function checkAuth() {
   const token = getToken();
   if (!token) { window.location.href = 'login.html'; return false; }
+
+  // Check expiry locally before hitting the network
+  const payload = decodeToken(token);
+  if (!payload || Date.now() / 1000 > payload.exp) { logout(); return false; }
+
   try {
     const res = await fetch(API_URL + '/api/auth/me', {
       headers: { 'Authorization': 'Bearer ' + token },
     });
-    if (res.status === 401) { logout(); return false; }
+    if (res.status === 401 || res.status === 403) { logout(); return false; }
     const user = await res.json();
 
     // Show user name + avatar initial in sidebar footer
@@ -50,15 +60,42 @@ async function checkAuth() {
 
     return true;
   } catch (e) {
-    // Network error — allow through so loadAll can handle retry
+    // Network error — use local expiry check instead of blindly allowing through
+    const p = decodeToken(token);
+    if (!p || Date.now() / 1000 > p.exp) { logout(); return false; }
     return true;
   }
 }
+
+// Auto-logout exactly when the token expires (handles tab left open)
+function startSessionWatcher() {
+  const token = getToken();
+  if (!token) return;
+  const payload = decodeToken(token);
+  if (!payload) { logout(); return; }
+  const msLeft = (payload.exp * 1000) - Date.now();
+  if (msLeft <= 0) { logout(); return; }
+  setTimeout(() => {
+    toast('Your session has expired. Redirecting to login…', 'danger');
+    setTimeout(logout, 1500);
+  }, msLeft);
+}
+
+// Re-check token when the user switches back to this tab after being away
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    const token = getToken();
+    if (!token) { logout(); return; }
+    const payload = decodeToken(token);
+    if (!payload || Date.now() / 1000 > payload.exp) logout();
+  }
+});
 
 /* ══════════════ INIT ══════════════ */
 document.addEventListener('DOMContentLoaded', async () => {
   const authed = await checkAuth();
   if (!authed) return;
+  startSessionWatcher();
   el('api-url-input').value    = API_URL;
   el('settings-api-url').value = API_URL;
   setupCharCounters();
