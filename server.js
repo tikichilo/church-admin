@@ -11,6 +11,7 @@ const cors      = require('cors');
 const path      = require('path');
 const bcrypt    = require('bcryptjs');
 const jwt       = require('jsonwebtoken');
+const cron      = require('node-cron');
 require('dotenv').config();
 
 const JWT_SECRET  = process.env.JWT_SECRET  || 'change-this-secret-in-production';
@@ -49,8 +50,8 @@ const userSchema = new mongoose.Schema({
   password:   { type: String, required: true },
   role:       { type: String, default: 'admin', enum: ['admin', 'superadmin'] },
   blocked:    { type: Boolean, default: false },
-  lastSeen:   { type: Date,   default: null },   // ← NEW
-  lastAction: { type: String, default: null },   // ← NEW
+  lastSeen:   { type: Date,   default: null },
+  lastAction: { type: String, default: null },
   createdAt:  { type: Date,   default: Date.now },
 });
 const User = mongoose.model('User', userSchema);
@@ -530,23 +531,33 @@ app.delete('/api/stories/:id', requireAuth, async (req, res) => {
 
 
 /* ═══════════════════════════════════════════════
-   SUPER ADMIN MIDDLEWARE & ROUTES
+   SUPER ADMIN MIDDLEWARE
+   ✦ FIX: always checks DB for role + blocked status
+     so stale JWTs can never bypass access control
 ═══════════════════════════════════════════════ */
 
-function requireSuperAdmin(req, res, next) {
+async function requireSuperAdmin(req, res, next) {
   const authHeader = req.headers['authorization'] || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    if (req.user.role !== 'superadmin') {
-      return res.status(403).json({ error: 'Super admin access required' });
-    }
+    const decoded = jwt.verify(token, JWT_SECRET);
+    // Always hit the DB — never trust the role baked into the JWT
+    const user = await User.findById(decoded.id).select('role blocked name email').lean();
+    if (!user)              return res.status(401).json({ error: 'Account not found' });
+    if (user.blocked)       return res.status(403).json({ error: 'Your account has been suspended' });
+    if (user.role !== 'superadmin') return res.status(403).json({ error: 'Super admin access required' });
+    req.user = { ...decoded, role: user.role, name: user.name, email: user.email };
     next();
   } catch (e) {
     return res.status(401).json({ error: 'Session expired' });
   }
 }
+
+
+/* ═══════════════════════════════════════════════
+   ROUTES — SUPER ADMIN
+═══════════════════════════════════════════════ */
 
 app.get('/api/superadmin/admins', requireSuperAdmin, async (req, res) => {
   try {
@@ -564,7 +575,6 @@ app.get('/api/superadmin/admins', requireSuperAdmin, async (req, res) => {
 
     const result = admins.map(a => ({
       ...a,
-      // Prefer audit log data, fall back to User model fields
       lastSeen:   seenMap[a._id.toString()]?.lastSeen   || a.lastSeen   || null,
       lastAction: seenMap[a._id.toString()]?.lastAction || a.lastAction || null,
     }));
@@ -699,22 +709,19 @@ app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res)
   }
 });
 
+
 /* ═══════════════════════════════════════════════
    CRON JOBS
 ═══════════════════════════════════════════════ */
-const cron = require('node-cron');
 
-// Every Thursday at midnight — delete expired announcements & reset lesson/theme
+// Every Thursday at midnight (UTC) — clear expired announcements + reset lesson & theme
 cron.schedule('0 0 * * 4', async () => {
   try {
     const now = new Date();
 
-    // Delete announcements that have passed their expiry date
     const annResult = await Announcement.deleteMany({
       expiresAt: { $ne: null, $lte: now },
     });
-
-    // Clear the lesson of the week and verse (theme)
     const lessonResult = await Lesson.deleteMany({});
     const themeResult  = await Theme.deleteMany({});
 
@@ -724,7 +731,7 @@ cron.schedule('0 0 * * 4', async () => {
   }
 });
 
-// Every 30 minutes — ping self to prevent Render spin-down
+// Every 30 minutes — ping self to prevent Render free-tier spin-down
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 cron.schedule('*/30 * * * *', async () => {
   try {
@@ -734,6 +741,7 @@ cron.schedule('*/30 * * * *', async () => {
     console.error('[CRON] Keep-alive ping failed:', err);
   }
 });
+
 
 /* ═══════════════════════════════════════════════
    START
