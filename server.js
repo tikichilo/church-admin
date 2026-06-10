@@ -5,13 +5,15 @@
 
 'use strict';
 
-const express   = require('express');
-const mongoose  = require('mongoose');
-const cors      = require('cors');
-const path      = require('path');
-const bcrypt    = require('bcryptjs');
-const jwt       = require('jsonwebtoken');
-const cron      = require('node-cron');
+const express    = require('express');
+const mongoose   = require('mongoose');
+const cors       = require('cors');
+const path       = require('path');
+const bcrypt     = require('bcryptjs');
+const jwt        = require('jsonwebtoken');
+const crypto     = require('crypto');
+const nodemailer = require('nodemailer');
+const cron       = require('node-cron');
 require('dotenv').config();
 
 const JWT_SECRET  = process.env.JWT_SECRET  || 'change-this-secret-in-production';
@@ -55,6 +57,24 @@ const userSchema = new mongoose.Schema({
   createdAt:  { type: Date,   default: Date.now },
 });
 const User = mongoose.model('User', userSchema);
+
+const passwordResetSchema = new mongoose.Schema({
+  userId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  token:     { type: String, required: true },
+  expiresAt: { type: Date,   required: true },
+  used:      { type: Boolean, default: false },
+});
+const PasswordReset = mongoose.model('PasswordReset', passwordResetSchema);
+
+// Nodemailer transporter (Gmail SMTP)
+// Requires GMAIL_USER and GMAIL_PASS (16-char App Password) in .env
+const mailer = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS,
+  },
+});
 
 // Middleware: verify JWT only (public-ish routes)
 function requireAuth(req, res, next) {
@@ -120,7 +140,6 @@ app.post('/api/auth/login', async (req, res) => {
       { expiresIn: '8h' }
     );
 
-    // Record last seen on login
     User.findByIdAndUpdate(user._id, { lastSeen: new Date(), lastAction: 'LOGIN' }).catch(() => {});
 
     res.json({ token, name: user.name, email: user.email, role: user.role });
@@ -130,9 +149,102 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// GET /api/auth/me — verify token + return id so superadmin can identify itself
+// GET /api/auth/me
 app.get('/api/auth/me', requireAuth, (req, res) => {
   res.json({ id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role });
+});
+
+// POST /api/auth/forgot-password
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+    // Always respond 200 — don't reveal whether the email exists
+    if (!user) return res.json({ success: true });
+
+    // Invalidate any existing unused tokens for this user
+    await PasswordReset.deleteMany({ userId: user._id });
+
+    const rawToken    = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    await PasswordReset.create({
+      userId:    user._id,
+      token:     hashedToken,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+    });
+
+    const BASE_URL = (process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`).replace(/\/+$/, '');
+    const resetUrl = `${BASE_URL}/reset-password.html?token=${rawToken}`;
+
+    await mailer.sendMail({
+      from:    `"Makeni Central SDA Admin" <${process.env.GMAIL_USER}>`,
+      to:      user.email,
+      subject: 'Reset your admin password',
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px 24px;background:#fff;border-radius:12px;border:1px solid #e2e2e2">
+          <div style="text-align:center;margin-bottom:24px">
+            <div style="width:48px;height:48px;border-radius:50%;background:#041534;display:inline-flex;align-items:center;justify-content:center;font-family:Georgia,serif;font-size:20px;color:#e6c364;font-weight:700">M</div>
+            <h2 style="margin:12px 0 4px;color:#041534;font-size:18px">Makeni Central SDA</h2>
+            <p style="color:#777;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0">Admin Portal</p>
+          </div>
+          <p style="color:#1a1c1c;font-size:15px">Hi <strong>${user.name}</strong>,</p>
+          <p style="color:#45464e;font-size:14px;line-height:1.6">
+            We received a request to reset your password. Click the button below to choose a new one.
+            This link will expire in <strong>1 hour</strong>.
+          </p>
+          <div style="text-align:center;margin:28px 0">
+            <a href="${resetUrl}" style="background:#041534;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;display:inline-block">
+              Reset Password
+            </a>
+          </div>
+          <p style="color:#888;font-size:12px;line-height:1.6">
+            If you didn't request this, you can safely ignore this email — your password will remain unchanged.
+          </p>
+          <hr style="border:none;border-top:1px solid #eee;margin:24px 0"/>
+          <p style="color:#aaa;font-size:11px;text-align:center">Makeni Central SDA Church Admin Portal</p>
+        </div>
+      `,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/auth/forgot-password:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/auth/reset-password
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ error: 'Token and password are required' });
+    if (password.length < 8)  return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const resetRecord = await PasswordReset.findOne({
+      token:     hashedToken,
+      used:      false,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!resetRecord) {
+      return res.status(400).json({ error: 'This reset link is invalid or has expired' });
+    }
+
+    const hash = await bcrypt.hash(password, 12);
+    await User.findByIdAndUpdate(resetRecord.userId, { password: hash });
+    await PasswordReset.findByIdAndUpdate(resetRecord._id, { used: true });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/auth/reset-password:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 
@@ -363,8 +475,7 @@ async function requireAuthStrict(req, res, next) {
     const user = await User.findById(decoded.id).select('blocked role name email').lean();
     if (!user)        return res.status(401).json({ error: 'Account not found' });
     if (user.blocked) return res.status(403).json({ error: 'Your account has been suspended' });
-    req.user = { ...decoded, role: user.role }; // always use DB role, not stale JWT
-    // Track last seen + last action (fire-and-forget)
+    req.user = { ...decoded, role: user.role };
     const action = `${req.method} ${req.path}`;
     User.findByIdAndUpdate(decoded.id, { lastSeen: new Date(), lastAction: action }).catch(() => {});
     next();
@@ -532,8 +643,6 @@ app.delete('/api/stories/:id', requireAuth, async (req, res) => {
 
 /* ═══════════════════════════════════════════════
    SUPER ADMIN MIDDLEWARE
-   ✦ FIX: always checks DB for role + blocked status
-     so stale JWTs can never bypass access control
 ═══════════════════════════════════════════════ */
 
 async function requireSuperAdmin(req, res, next) {
@@ -542,7 +651,6 @@ async function requireSuperAdmin(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    // Always hit the DB — never trust the role baked into the JWT
     const user = await User.findById(decoded.id).select('role blocked name email').lean();
     if (!user)              return res.status(401).json({ error: 'Account not found' });
     if (user.blocked)       return res.status(403).json({ error: 'Your account has been suspended' });
@@ -563,7 +671,6 @@ app.get('/api/superadmin/admins', requireSuperAdmin, async (req, res) => {
   try {
     const admins = await User.find({}, '-password').sort({ createdAt: -1 }).lean();
 
-    // Pull last activity from audit log
     const ids = admins.map(a => a._id);
     const auditActivity = await AuditLog.aggregate([
       { $match: { adminId: { $in: ids } } },
@@ -718,13 +825,9 @@ app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res)
 cron.schedule('0 0 * * 4', async () => {
   try {
     const now = new Date();
-
-    const annResult = await Announcement.deleteMany({
-      expiresAt: { $ne: null, $lte: now },
-    });
+    const annResult    = await Announcement.deleteMany({ expiresAt: { $ne: null, $lte: now } });
     const lessonResult = await Lesson.deleteMany({});
     const themeResult  = await Theme.deleteMany({});
-
     console.log(`[CRON] Thursday cleanup — removed ${annResult.deletedCount} announcement(s), cleared ${lessonResult.deletedCount} lesson(s) and ${themeResult.deletedCount} theme(s)`);
   } catch (err) {
     console.error('[CRON] Thursday cleanup failed:', err);
