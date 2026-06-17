@@ -11,6 +11,12 @@ let allDiscussions   = [];
 let allStories       = [];
 let allAnnouncements = [];
 
+// Clear localhost URLs saved during local dev — they break the deployed app
+if (API_URL.includes('localhost') || API_URL.includes('127.0.0.1')) {
+  localStorage.removeItem('sda_admin_api');
+  API_URL = '';
+}
+
 /* ══════════════ AUTH GUARD ══════════════ */
 function getToken() {
   return localStorage.getItem('sda_admin_token') || '';

@@ -313,6 +313,21 @@ const storySchema = new mongoose.Schema({
 });
 const Story = mongoose.model('Story', storySchema);
 
+// ── Visit — "Plan Your Visit" modal submissions ──
+const visitSchema = new mongoose.Schema({
+  date:      { type: Date,   required: true },
+  service:   { type: String, required: true, maxlength: 60  }, // e.g. "Divine Service"
+  time:      { type: String, default: '',    maxlength: 60  }, // e.g. "11:00 AM"
+  name:      { type: String, default: '',    maxlength: 100 },
+  needs:     { type: [String], default: [] },                  // e.g. ["prayer","welcome"]
+  createdAt: { type: Date,   default: Date.now },
+});
+const Visit = mongoose.model('Visit', visitSchema);
+
+// Allowed values, kept in sync with the service buttons / checkboxes in index.html
+const VISIT_SERVICES = ['Sabbath School', 'Divine Service', 'Bible Study', 'Full Day'];
+const VISIT_NEEDS     = ['prayer', 'welcome', 'kids', 'transport'];
+
 
 /* ═══════════════════════════════════════════════
    ROUTES — PUBLIC
@@ -429,6 +444,45 @@ app.get('/api/stories', async (req, res) => {
   }
 });
 
+// POST /api/visits — saves a "Plan Your Visit" submission. Public/unauthenticated:
+// the people filling out this modal on the public site aren't logged in.
+app.post('/api/visits', async (req, res) => {
+  try {
+    const { date, service, time, name, needs } = req.body;
+
+    if (!date || !service) {
+      return res.status(400).json({ error: 'Date and service are required' });
+    }
+
+    const parsedDate = new Date(date);
+    if (isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date' });
+    }
+
+    if (!VISIT_SERVICES.includes(service)) {
+      return res.status(400).json({ error: 'Invalid service' });
+    }
+
+    // Drop any need values that aren't in our known list, just in case
+    const cleanNeeds = Array.isArray(needs)
+      ? needs.filter(n => VISIT_NEEDS.includes(n))
+      : [];
+
+    const visit = await Visit.create({
+      date:    parsedDate,
+      service,
+      time:    (time || '').slice(0, 60),
+      name:    (name || '').slice(0, 100),
+      needs:   cleanNeeds,
+    });
+
+    res.status(201).json({ success: true, id: visit._id });
+  } catch (err) {
+    console.error('POST /api/visits:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 
 /* ═══════════════════════════════════════════════
    AUDIT LOG — Schema & helper
@@ -523,6 +577,23 @@ app.get('/api/donations', requireAuth, async (req, res) => {
     res.json(donations);
   } catch (err) {
     console.error('GET /api/donations:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/visits — admin-only list of planned visits, soonest upcoming first.
+// Optional ?upcoming=true filters out past dates.
+app.get('/api/visits', requireAuth, async (req, res) => {
+  try {
+    const { upcoming } = req.query;
+    const filter = upcoming === 'true'
+      ? { date: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } }
+      : {};
+
+    const visits = await Visit.find(filter).sort({ date: 1 }).lean();
+    res.json(visits);
+  } catch (err) {
+    console.error('GET /api/visits:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -770,13 +841,13 @@ app.get('/api/superadmin/audit', requireSuperAdmin, async (req, res) => {
 
 app.get('/api/superadmin/db-stats', requireSuperAdmin, async (req, res) => {
   try {
-    const [discussions, lessons, themes, announcements, stories, donations, auditLogs, admins] =
+    const [discussions, lessons, themes, announcements, stories, donations, auditLogs, admins, visits] =
       await Promise.all([
         Discussion.countDocuments(), Lesson.countDocuments(), Theme.countDocuments(),
         Announcement.countDocuments(), Story.countDocuments(), Donation.countDocuments(),
-        AuditLog.countDocuments(), User.countDocuments(),
+        AuditLog.countDocuments(), User.countDocuments(), Visit.countDocuments(),
       ]);
-    res.json({ discussions, lessons, themes, announcements, stories, donations, auditLogs, admins });
+    res.json({ discussions, lessons, themes, announcements, stories, donations, auditLogs, admins, visits });
   } catch (err) {
     console.error('GET /api/superadmin/db-stats:', err);
     res.status(500).json({ error: 'Server error' });
@@ -791,6 +862,7 @@ const CLEARABLE = {
   stories:       () => Story.deleteMany({}),
   donations:     () => Donation.deleteMany({}),
   auditlogs:     () => AuditLog.deleteMany({}),
+  visits:        () => Visit.deleteMany({}),
 };
 
 app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res) => {
@@ -803,7 +875,7 @@ app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res)
     let result;
     if (olderThanDays > 0 && key !== 'lessons' && key !== 'themes') {
       const cutoff = new Date(Date.now() - olderThanDays * 86400000);
-      const Model = { discussions: Discussion, announcements: Announcement, stories: Story, donations: Donation, auditlogs: AuditLog }[key];
+      const Model = { discussions: Discussion, announcements: Announcement, stories: Story, donations: Donation, auditlogs: AuditLog, visits: Visit }[key];
       result = Model ? await Model.deleteMany({ createdAt: { $lt: cutoff } }) : await CLEARABLE[key]();
     } else {
       result = await CLEARABLE[key]();
