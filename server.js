@@ -1,6 +1,17 @@
 /**
- * server.js — Makeni Central SDA Church
+ * server.js — Makeni Central SDA Church — ADMIN SERVER
  * Node.js + Express + MongoDB (Mongoose)
+ *
+ * This is the authenticated admin backend: login/signup, JWT auth,
+ * audit logging, and superadmin controls, plus the write-side routes
+ * for content the public site displays (announcements, lesson/theme,
+ * events, recaps). Public GET routes are included so the admin
+ * dashboard (and, if pointed here, the public site) can read data;
+ * all write methods (POST/PUT/PATCH/DELETE) on admin-managed
+ * collections require a valid, non-blocked admin/superadmin JWT.
+ *
+ * Story model and all kids-page-related content/routes have been
+ * removed — kids.html no longer has a backend-driven "stories" feed.
  */
 
 'use strict';
@@ -9,6 +20,8 @@ const express    = require('express');
 const mongoose   = require('mongoose');
 const cors       = require('cors');
 const path       = require('path');
+const fs         = require('fs');
+const multer     = require('multer');
 const bcrypt     = require('bcryptjs');
 const jwt        = require('jsonwebtoken');
 const crypto     = require('crypto');
@@ -32,6 +45,63 @@ app.use(express.static(path.join(__dirname)));
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'login.html'));
 });
+
+
+/* ═══════════════════════════════════════════════
+   UPLOADS (event posters + recap gallery images)
+   Stored under <root>/uploads/... so express.static above serves
+   them directly at /uploads/events/<file> and /uploads/recaps/<file>.
+   Non-image files and anything over 5MB are rejected before they
+   touch disk.
+═══════════════════════════════════════════════ */
+const UPLOAD_ROOT      = path.join(__dirname, 'uploads');
+const EVENT_UPLOAD_DIR = path.join(UPLOAD_ROOT, 'events');
+const RECAP_UPLOAD_DIR = path.join(UPLOAD_ROOT, 'recaps');
+[EVENT_UPLOAD_DIR, RECAP_UPLOAD_DIR].forEach(dir => fs.mkdirSync(dir, { recursive: true }));
+
+const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const IMAGE_FILTER_ERROR = 'Only JPG, PNG, and WEBP images are allowed';
+
+function makeStorage(dir) {
+  return multer.diskStorage({
+    destination: (req, file, cb) => cb(null, dir),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      const safeExt = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext) ? ext : '.jpg';
+      cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`);
+    },
+  });
+}
+
+function imageFileFilter(req, file, cb) {
+  if (!IMAGE_MIME_TYPES.includes(file.mimetype)) {
+    return cb(new Error(IMAGE_FILTER_ERROR));
+  }
+  cb(null, true);
+}
+
+const uploadEventPoster = multer({
+  storage: makeStorage(EVENT_UPLOAD_DIR),
+  fileFilter: imageFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+});
+
+const uploadRecapImages = multer({
+  storage: makeStorage(RECAP_UPLOAD_DIR),
+  fileFilter: imageFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024, files: 10 }, // 5MB each, 10 max
+});
+
+// Best-effort file deletion — never throws, just logs if it fails
+function deleteUploadedFile(publicUrl) {
+  if (!publicUrl) return;
+  const filePath = path.join(__dirname, publicUrl);
+  fs.unlink(filePath, err => {
+    if (err && err.code !== 'ENOENT') {
+      console.warn('Could not delete uploaded file:', filePath, err.message);
+    }
+  });
+}
 
 
 /* ═══════════════════════════════════════════════
@@ -294,24 +364,22 @@ const themeSchema = new mongoose.Schema({
 });
 const Theme = mongoose.model('Theme', themeSchema);
 
+// ── Announcement — now matches the public site's fields ──
+const ANNOUNCEMENT_REACTION_KEYS = ['amen', 'love', 'praise'];
+
 const announcementSchema = new mongoose.Schema({
   text:      { type: String, required: true, maxlength: 200 },
+  title:     { type: String, default: '',        maxlength: 100 },
+  category:  { type: String, default: 'general', maxlength: 40, lowercase: true, trim: true },
   expiresAt: { type: Date,   default: null },
+  reactions: {
+    amen:   { type: Number, default: 0, min: 0 },
+    love:   { type: Number, default: 0, min: 0 },
+    praise: { type: Number, default: 0, min: 0 },
+  },
   createdAt: { type: Date,   default: Date.now },
 });
 const Announcement = mongoose.model('Announcement', announcementSchema);
-
-const storySchema = new mongoose.Schema({
-  title:     { type: String, required: true, maxlength: 100 },
-  tag:       { type: String, default: '',    maxlength: 60 },
-  ageGroup:  { type: String, default: 'All Ages' },
-  preview:   { type: String, default: '',    maxlength: 200 },
-  body:      { type: String, required: true, maxlength: 3000 },
-  imageUrl:  { type: String, default: '' },
-  featured:  { type: Boolean, default: false },
-  createdAt: { type: Date,   default: Date.now },
-});
-const Story = mongoose.model('Story', storySchema);
 
 // ── Visit — "Plan Your Visit" modal submissions ──
 const visitSchema = new mongoose.Schema({
@@ -327,6 +395,35 @@ const Visit = mongoose.model('Visit', visitSchema);
 // Allowed values, kept in sync with the service buttons / checkboxes in index.html
 const VISIT_SERVICES = ['Sabbath School', 'Divine Service', 'Bible Study', 'Full Day'];
 const VISIT_NEEDS     = ['prayer', 'welcome', 'kids', 'transport'];
+
+// ── Event — Upcoming Events + Featured Event on news.html ──
+const eventSchema = new mongoose.Schema({
+  title:     { type: String,  required: true, maxlength: 120 },
+  posterUrl: { type: String,  default: '' },                  // /uploads/events/<file>
+  date:      { type: Date,    required: true },
+  time:      { type: String,  default: '',    maxlength: 60  }, // e.g. "09:00 AM – 04:00 PM"
+  location:  { type: String,  default: '',    maxlength: 150 },
+  info:      { type: String,  default: '',    maxlength: 1000 },
+  featured:  { type: Boolean, default: false },                 // only one should be true at a time
+  createdAt: { type: Date,    default: Date.now },
+});
+const Event = mongoose.model('Event', eventSchema);
+
+// ── Recap — Event Recaps gallery on news.html ──
+const recapSchema = new mongoose.Schema({
+  title:       { type: String, required: true, maxlength: 120 },
+  description: { type: String, default: '',    maxlength: 1000 },
+  images: {
+    type: [String],   // /uploads/recaps/<file>, up to 10
+    default: [],
+    validate: {
+      validator: arr => arr.length > 0 && arr.length <= 10,
+      message: 'A recap needs between 1 and 10 images',
+    },
+  },
+  createdAt: { type: Date, default: Date.now },
+});
+const Recap = mongoose.model('Recap', recapSchema);
 
 
 /* ═══════════════════════════════════════════════
@@ -434,12 +531,33 @@ app.get('/api/announcements', async (req, res) => {
   }
 });
 
-app.get('/api/stories', async (req, res) => {
+// POST /api/announcements/:id/react — public reaction toggle. No user
+// accounts exist for visitors, so this trusts the client's `active`
+// flag (the frontend tracks each visitor's own toggle in localStorage
+// and just tells the server whether to add or remove one).
+app.post('/api/announcements/:id/react', async (req, res) => {
   try {
-    const stories = await Story.find().sort({ featured: -1, createdAt: -1 }).lean();
-    res.json(stories);
+    const { reaction, active } = req.body;
+    if (!ANNOUNCEMENT_REACTION_KEYS.includes(reaction)) {
+      return res.status(400).json({ error: 'Invalid reaction type' });
+    }
+    const delta = active ? 1 : -1;
+    let ann = await Announcement.findByIdAndUpdate(
+      req.params.id,
+      { $inc: { [`reactions.${reaction}`]: delta } },
+      { new: true }
+    );
+    if (!ann) return res.status(404).json({ error: 'Not found' });
+
+    // Guard against the count dipping below 0 (e.g. a stale toggle from
+    // a second tab).
+    if (ann.reactions[reaction] < 0) {
+      ann.reactions[reaction] = 0;
+      await ann.save();
+    }
+    res.json({ success: true, reactions: ann.reactions });
   } catch (err) {
-    console.error('GET /api/stories:', err);
+    console.error('POST /api/announcements/:id/react:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -479,6 +597,43 @@ app.post('/api/visits', async (req, res) => {
     res.status(201).json({ success: true, id: visit._id });
   } catch (err) {
     console.error('POST /api/visits:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/events — upcoming events only, soonest first
+app.get('/api/events', async (req, res) => {
+  try {
+    const now = new Date();
+    const events = await Event.find({ date: { $gte: now } }).sort({ date: 1 }).lean();
+    res.json(events);
+  } catch (err) {
+    console.error('GET /api/events:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/events/featured — the single event currently marked featured
+app.get('/api/events/featured', async (req, res) => {
+  try {
+    const event = await Event
+      .findOne({ featured: true, date: { $gte: new Date() } })
+      .sort({ date: 1 })
+      .lean();
+    res.json(event || null);
+  } catch (err) {
+    console.error('GET /api/events/featured:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/recaps — newest recap galleries first
+app.get('/api/recaps', async (req, res) => {
+  try {
+    const recaps = await Recap.find().sort({ createdAt: -1 }).lean();
+    res.json(recaps);
+  } catch (err) {
+    console.error('GET /api/recaps:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -538,7 +693,10 @@ async function requireAuthStrict(req, res, next) {
   }
 }
 
-// Apply strict auth to all admin write routes
+// Apply strict auth to all admin write routes.
+// GET requests on these paths pass through (public reads); anything
+// that mutates data (POST/PUT/PATCH/DELETE) requires a valid,
+// non-blocked admin/superadmin JWT.
 app.use([
   '/api/audit',
   '/api/donations',
@@ -546,7 +704,8 @@ app.use([
   '/api/lesson',
   '/api/theme',
   '/api/announcements',
-  '/api/stories',
+  '/api/events',
+  '/api/recaps',
 ], (req, res, next) => {
   if (['POST','PUT','PATCH','DELETE'].includes(req.method)) {
     return requireAuthStrict(req, res, next);
@@ -651,9 +810,14 @@ app.post('/api/theme', requireAuth, async (req, res) => {
 
 app.post('/api/announcements', requireAuth, async (req, res) => {
   try {
-    const { text, expiresAt } = req.body;
+    const { text, title, category, expiresAt } = req.body;
     if (!text) return res.status(400).json({ error: 'Text required' });
-    const ann = await Announcement.create({ text: text.slice(0,200), expiresAt: expiresAt ? new Date(expiresAt) : null });
+    const ann = await Announcement.create({
+      text:      text.slice(0, 200),
+      title:     (title || '').slice(0, 100),
+      category:  (category || 'general').slice(0, 40).toLowerCase(),
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+    });
     res.status(201).json({ success: true, id: ann._id });
   } catch (err) {
     console.error('POST /api/announcements:', err);
@@ -672,41 +836,112 @@ app.delete('/api/announcements/:id', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/stories', requireAuth, async (req, res) => {
+// POST /api/events — multipart/form-data: fields + a single `poster` file.
+// Poster is optional; requireAuth is applied via the blanket app.use above.
+app.post('/api/events', uploadEventPoster.single('poster'), async (req, res) => {
   try {
-    const { title, tag, ageGroup, preview, body, imageUrl, featured } = req.body;
-    if (!title || !body) return res.status(400).json({ error: 'Title and body required' });
-    if (featured) await Story.updateMany({ featured: true }, { featured: false });
-    const story = await Story.create({
-      title: title.slice(0,100), tag: (tag||'').slice(0,60), ageGroup: ageGroup||'All Ages',
-      preview: (preview||'').slice(0,200), body: body.slice(0,3000), imageUrl: imageUrl||'', featured: !!featured,
+    const { title, date, time, location, info } = req.body;
+
+    if (!title || !date) {
+      if (req.file) deleteUploadedFile(`/uploads/events/${req.file.filename}`);
+      return res.status(400).json({ error: 'Title and date are required' });
+    }
+
+    const parsedDate = new Date(date);
+    if (isNaN(parsedDate.getTime())) {
+      if (req.file) deleteUploadedFile(`/uploads/events/${req.file.filename}`);
+      return res.status(400).json({ error: 'Invalid date' });
+    }
+
+    const event = await Event.create({
+      title:     title.slice(0, 120),
+      posterUrl: req.file ? `/uploads/events/${req.file.filename}` : '',
+      date:      parsedDate,
+      time:      (time || '').slice(0, 60),
+      location:  (location || '').slice(0, 150),
+      info:      (info || '').slice(0, 1000),
     });
-    res.status(201).json({ success: true, id: story._id });
+
+    await audit(req, 'CREATE_EVENT', { eventId: event._id, title: event.title });
+    res.status(201).json({ success: true, id: event._id });
   } catch (err) {
-    console.error('POST /api/stories:', err);
+    console.error('POST /api/events:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-app.post('/api/stories/:id/feature', requireAuth, async (req, res) => {
+// PATCH /api/events/:id/feature — marks one event as featured, unmarking any other
+app.patch('/api/events/:id/feature', async (req, res) => {
   try {
-    await Story.updateMany({ featured: true }, { featured: false });
-    const story = await Story.findByIdAndUpdate(req.params.id, { featured: true }, { new: true });
-    if (!story) return res.status(404).json({ error: 'Not found' });
+    const exists = await Event.exists({ _id: req.params.id });
+    if (!exists) return res.status(404).json({ error: 'Not found' });
+
+    await Event.updateMany({}, { $set: { featured: false } });
+    await Event.findByIdAndUpdate(req.params.id, { $set: { featured: true } });
+
+    await audit(req, 'FEATURE_EVENT', { eventId: req.params.id });
     res.json({ success: true });
   } catch (err) {
-    console.error('POST /api/stories/:id/feature:', err);
+    console.error('PATCH /api/events/:id/feature:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-app.delete('/api/stories/:id', requireAuth, async (req, res) => {
+app.delete('/api/events/:id', async (req, res) => {
   try {
-    const story = await Story.findByIdAndDelete(req.params.id);
-    if (!story) return res.status(404).json({ error: 'Not found' });
+    const event = await Event.findByIdAndDelete(req.params.id);
+    if (!event) return res.status(404).json({ error: 'Not found' });
+
+    deleteUploadedFile(event.posterUrl);
+    await audit(req, 'DELETE_EVENT', { eventId: event._id, title: event.title });
     res.json({ success: true });
   } catch (err) {
-    console.error('DELETE /api/stories/:id:', err);
+    console.error('DELETE /api/events/:id:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/recaps — multipart/form-data: fields + up to 10 files under `images`
+app.post('/api/recaps', uploadRecapImages.array('images', 10), async (req, res) => {
+  try {
+    const { title, description } = req.body;
+
+    if (!title) {
+      (req.files || []).forEach(f => deleteUploadedFile(`/uploads/recaps/${f.filename}`));
+      return res.status(400).json({ error: 'Title is required' });
+    }
+
+    if (!req.files || !req.files.length) {
+      return res.status(400).json({ error: 'At least one image is required' });
+    }
+
+    const images = req.files.map(f => `/uploads/recaps/${f.filename}`);
+
+    const recap = await Recap.create({
+      title:       title.slice(0, 120),
+      description: (description || '').slice(0, 1000),
+      images,
+    });
+
+    await audit(req, 'CREATE_RECAP', { recapId: recap._id, title: recap.title, images: images.length });
+    res.status(201).json({ success: true, id: recap._id });
+  } catch (err) {
+    console.error('POST /api/recaps:', err);
+    (req.files || []).forEach(f => deleteUploadedFile(`/uploads/recaps/${f.filename}`));
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/recaps/:id', async (req, res) => {
+  try {
+    const recap = await Recap.findByIdAndDelete(req.params.id);
+    if (!recap) return res.status(404).json({ error: 'Not found' });
+
+    (recap.images || []).forEach(deleteUploadedFile);
+    await audit(req, 'DELETE_RECAP', { recapId: recap._id, title: recap.title });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /api/recaps/:id:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -841,13 +1076,14 @@ app.get('/api/superadmin/audit', requireSuperAdmin, async (req, res) => {
 
 app.get('/api/superadmin/db-stats', requireSuperAdmin, async (req, res) => {
   try {
-    const [discussions, lessons, themes, announcements, stories, donations, auditLogs, admins, visits] =
+    const [discussions, lessons, themes, announcements, donations, auditLogs, admins, visits, events, recaps] =
       await Promise.all([
         Discussion.countDocuments(), Lesson.countDocuments(), Theme.countDocuments(),
-        Announcement.countDocuments(), Story.countDocuments(), Donation.countDocuments(),
+        Announcement.countDocuments(), Donation.countDocuments(),
         AuditLog.countDocuments(), User.countDocuments(), Visit.countDocuments(),
+        Event.countDocuments(), Recap.countDocuments(),
       ]);
-    res.json({ discussions, lessons, themes, announcements, stories, donations, auditLogs, admins, visits });
+    res.json({ discussions, lessons, themes, announcements, donations, auditLogs, admins, visits, events, recaps });
   } catch (err) {
     console.error('GET /api/superadmin/db-stats:', err);
     res.status(500).json({ error: 'Server error' });
@@ -859,10 +1095,19 @@ const CLEARABLE = {
   lessons:       () => Lesson.deleteMany({}),
   themes:        () => Theme.deleteMany({}),
   announcements: () => Announcement.deleteMany({}),
-  stories:       () => Story.deleteMany({}),
   donations:     () => Donation.deleteMany({}),
   auditlogs:     () => AuditLog.deleteMany({}),
   visits:        () => Visit.deleteMany({}),
+  events: async () => {
+    const docs = await Event.find({}, 'posterUrl').lean();
+    docs.forEach(d => deleteUploadedFile(d.posterUrl));
+    return Event.deleteMany({});
+  },
+  recaps: async () => {
+    const docs = await Recap.find({}, 'images').lean();
+    docs.forEach(d => (d.images || []).forEach(deleteUploadedFile));
+    return Recap.deleteMany({});
+  },
 };
 
 app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res) => {
@@ -873,9 +1118,9 @@ app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res)
     }
     const olderThanDays = parseInt(req.query.olderThan) || 0;
     let result;
-    if (olderThanDays > 0 && key !== 'lessons' && key !== 'themes') {
+    if (olderThanDays > 0 && !['lessons', 'themes', 'events', 'recaps'].includes(key)) {
       const cutoff = new Date(Date.now() - olderThanDays * 86400000);
-      const Model = { discussions: Discussion, announcements: Announcement, stories: Story, donations: Donation, auditlogs: AuditLog, visits: Visit }[key];
+      const Model = { discussions: Discussion, announcements: Announcement, donations: Donation, auditlogs: AuditLog, visits: Visit }[key];
       result = Model ? await Model.deleteMany({ createdAt: { $lt: cutoff } }) : await CLEARABLE[key]();
     } else {
       result = await CLEARABLE[key]();
@@ -915,6 +1160,29 @@ cron.schedule('*/30 * * * *', async () => {
   } catch (err) {
     console.error('[CRON] Keep-alive ping failed:', err);
   }
+});
+
+
+/* ═══════════════════════════════════════════════
+   ERROR HANDLING — must be registered after all routes.
+   Catches multer upload errors (bad file type, too large, too many
+   files) and returns clean JSON instead of Express's default HTML
+   stack trace.
+═══════════════════════════════════════════════ */
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    const messages = {
+      LIMIT_FILE_SIZE:       'Image is too large — max 5MB per file.',
+      LIMIT_FILE_COUNT:      'Too many images — max 10 per recap.',
+      LIMIT_UNEXPECTED_FILE: 'Too many images — max 10 per recap.',
+    };
+    return res.status(400).json({ error: messages[err.code] || err.message });
+  }
+  if (err && err.message === IMAGE_FILTER_ERROR) {
+    return res.status(400).json({ error: err.message });
+  }
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Server error' });
 });
 
 

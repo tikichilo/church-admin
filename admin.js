@@ -4,12 +4,15 @@
 // Override via the Connect input in the topbar for remote/local dev use.
 let API_URL = (localStorage.getItem('sda_admin_api') || '').replace(/\/+$/, '');
 let deleteTargetId   = null;
-let deleteStoryId    = null;
 let deleteAnnId      = null;
+let deleteEventId    = null;
+let deleteRecapId    = null;
 let allDonations     = [];
 let allDiscussions   = [];
-let allStories       = [];
 let allAnnouncements = [];
+let allEvents        = [];
+let allRecaps        = [];
+let allVisits        = [];
 
 // Clear localhost URLs saved during local dev — they break the deployed app
 if (API_URL.includes('localhost') || API_URL.includes('127.0.0.1')) {
@@ -114,10 +117,12 @@ const pageTitles = {
   dashboard:     'Dashboard',
   lesson:        'Lesson of the Week',
   announcements: 'Announcements',
-  stories:       'Kids Bible Stories',
+  events:        'Events',
+  recaps:        'Event Recaps',
   donations:     'Donations',
   fund:          'Building Fund',
   discussions:   'Youth Discussions',
+  visits:        'Plan Your Visit',
   settings:      'Settings',
 };
 function showPage(name) {
@@ -131,14 +136,19 @@ function showPage(name) {
 }
 
 /* ══════════════ API ══════════════ */
+// Supports both JSON bodies (plain object) and multipart uploads (FormData).
+// Pass options.body as a FormData instance for file uploads — the
+// Content-Type header is intentionally omitted so the browser can set
+// the correct multipart boundary itself.
 async function apiFetch(path, options = {}, _retry = true) {
   try {
+    const isFormData = options.body instanceof FormData;
+    const headers = { 'Authorization': 'Bearer ' + getToken() };
+    if (!isFormData) headers['Content-Type'] = 'application/json';
+
     const res = await fetch(API_URL + path, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + getToken(),
-      },
       ...options,
+      headers: { ...headers, ...(options.headers || {}) },
     });
     // If unauthorized, token is missing or expired — redirect to login
     if (res.status === 401) {
@@ -149,6 +159,8 @@ async function apiFetch(path, options = {}, _retry = true) {
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
       console.error('apiFetch', options.method || 'GET', path, res.status, errBody);
+      // Show the server's actual error message when available (e.g. bad file type)
+      if (errBody && errBody.error) toast(errBody.error, 'danger');
       // Render free tier returns 502/503 while spinning up — retry once after 4s
       if (_retry && (res.status === 502 || res.status === 503)) {
         console.warn('Server warming up, retrying in 4s…');
@@ -201,7 +213,9 @@ async function loadAll() {
     loadDiscussions(),
     loadLesson(),
     loadAnnouncements(),
-    loadStories(),
+    loadEvents(),
+    loadRecaps(),
+    loadVisits(),
   ]);
 }
 
@@ -416,7 +430,7 @@ async function loadAnnouncements() {
 function renderTickerPreview(list) {
   const preview = el('ann-ticker-preview');
   if (!list.length) { preview.textContent = 'No announcements set'; return; }
-  preview.textContent = list.map(a => '· ' + a.text).join('   ');
+  preview.textContent = list.map(a => '· ' + (a.title ? a.title + ': ' : '') + a.text).join('   ');
 }
 
 function renderAnnouncementsList(list) {
@@ -427,9 +441,16 @@ function renderAnnouncementsList(list) {
   }
   wrap.innerHTML = list.map(a => {
     const expires = a.expiresAt ? new Date(a.expiresAt).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' }) : 'Always';
+    const reactionSummary = a.reactions
+      ? `🙏 ${a.reactions.amen || 0} · ❤️ ${a.reactions.love || 0} · 🎉 ${a.reactions.praise || 0}`
+      : '';
     return `<div class="ann-row">
       <div class="ann-dot"></div>
-      <div class="ann-text">${esc(a.text)}</div>
+      <div class="ann-text">
+        ${a.title ? `<strong>${esc(a.title)}</strong> — ` : ''}${esc(a.text)}
+        ${reactionSummary ? `<div style="font-size:11px; color:var(--muted); margin-top:2px;">${reactionSummary}</div>` : ''}
+      </div>
+      <span class="badge badge-blue" style="margin-right:6px;">${esc(a.category || 'general')}</span>
       <span class="badge badge-gray" style="margin-right:8px;">Until: ${expires}</span>
       <div class="ann-actions">
         <button class="btn btn-sm btn-danger" onclick="openDeleteAnnModal('${a._id}')">Remove</button>
@@ -439,17 +460,23 @@ function renderAnnouncementsList(list) {
 }
 
 async function addAnnouncement() {
+  const title   = el('ann-title').value.trim();
   const text    = el('ann-text').value.trim();
+  const category = el('ann-category').value.trim();
   const expires = el('ann-expires').value;
   if (!text) { toast('Announcement text is required', 'danger'); return; }
   const payload = { text };
-  if (expires) payload.expiresAt = expires;
+  if (title)    payload.title    = title;
+  if (category) payload.category = category;
+  if (expires)  payload.expiresAt = expires;
   const res = await apiFetch('/api/announcements', { method: 'POST', body: JSON.stringify(payload) });
   if (res && res.success) {
     toast('Announcement added!', 'success');
-    el('ann-text').value    = '';
-    el('ann-expires').value = '';
-    await logAudit('ADD_ANNOUNCEMENT', { text: payload.text, expiresAt: payload.expiresAt || null });
+    el('ann-title').value    = '';
+    el('ann-text').value     = '';
+    el('ann-category').value = '';
+    el('ann-expires').value  = '';
+    await logAudit('ADD_ANNOUNCEMENT', { title: payload.title || '', text: payload.text, category: payload.category || 'general' });
     loadAnnouncements();
   } else {
     toast('Failed to add — check server connection', 'danger');
@@ -480,105 +507,234 @@ async function confirmDeleteAnn() {
   }
 }
 
-/* ══════════════ KIDS STORIES ══════════════ */
-async function loadStories() {
-  const data = await apiFetch('/api/stories');
-  allStories = Array.isArray(data) ? data : [];
-  const featured = allStories.filter(s => s.featured).length;
-  el('stories-total').textContent        = allStories.length;
-  el('stories-featured').textContent     = featured;
-  el('stories-count-badge').textContent  = allStories.length + ' stories';
-  el('dash-stories-count').textContent   = allStories.length + ' stories published';
-  renderStoriesList(allStories);
+/* ══════════════ EVENTS ══════════════ */
+function eventImgUrl(posterUrl) {
+  if (!posterUrl) return '';
+  return API_URL + posterUrl;
 }
 
-function renderStoriesList(list) {
-  const wrap = el('stories-list');
+async function loadEvents() {
+  const data = await apiFetch('/api/events');
+  allEvents = Array.isArray(data) ? data : [];
+  el('events-count-badge').textContent = allEvents.length + ' events';
+  el('dash-events-count').textContent  = allEvents.length + ' upcoming';
+  renderEventsList(allEvents);
+}
+
+function renderEventsList(list) {
+  const wrap = el('events-list');
   if (!list.length) {
-    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg><p>No stories yet. Add one above!</p></div>`;
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><p>No upcoming events. Add one above!</p></div>`;
     return;
   }
-  wrap.innerHTML = list.map(s => {
-    const emoji = { 'Noah': '🚢', 'David': '🪨', 'Jonah': '🐋', 'Esther': '👑', 'Creation': '🌍' };
-    const icon  = Object.entries(emoji).find(([k]) => s.title.includes(k))?.[1] || '📖';
-    return `<div class="story-row">
-      <div class="story-thumb">${s.imageUrl ? `<img src="${esc(s.imageUrl)}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;" onerror="this.parentElement.textContent='📖'"/>` : icon}</div>
+  wrap.innerHTML = list.map(ev => {
+    const date = new Date(ev.date).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' });
+    return `<div class="item-row">
+      <div class="item-thumb">${ev.posterUrl ? `<img src="${esc(eventImgUrl(ev.posterUrl))}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;" onerror="this.parentElement.textContent='📅'"/>` : '📅'}</div>
       <div style="flex:1; min-width:0;">
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <span class="story-title">${esc(s.title)}</span>
-          ${s.featured ? '<span class="badge badge-gold">Featured</span>' : ''}
-          ${s.ageGroup ? `<span class="badge badge-gray">${esc(s.ageGroup)}</span>` : ''}
-          ${s.tag ? `<span class="badge badge-blue">${esc(s.tag)}</span>` : ''}
+          <span class="item-title">${esc(ev.title)}</span>
+          ${ev.featured ? '<span class="badge badge-gold">Featured</span>' : ''}
         </div>
-        <div class="story-meta">${new Date(s.createdAt).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' })}</div>
-        <div class="story-preview">${esc(s.preview || s.body || '').slice(0, 100)}…</div>
+        <div class="item-meta">${date}${ev.time ? ' · ' + esc(ev.time) : ''}${ev.location ? ' · ' + esc(ev.location) : ''}</div>
+        ${ev.info ? `<div class="item-preview">${esc(ev.info).slice(0, 100)}${ev.info.length > 100 ? '…' : ''}</div>` : ''}
       </div>
-      <div class="story-actions">
-        ${!s.featured ? `<button class="btn btn-sm btn-gold" onclick="featureStory('${s._id}')">Feature</button>` : ''}
-        <button class="btn btn-sm btn-danger" onclick="openDeleteStoryModal('${s._id}')">Delete</button>
+      <div class="item-actions">
+        ${!ev.featured ? `<button class="btn btn-sm btn-gold" onclick="featureEvent('${ev._id}')">Feature</button>` : ''}
+        <button class="btn btn-sm btn-danger" onclick="openDeleteEventModal('${ev._id}')">Delete</button>
       </div>
     </div>`;
   }).join('');
 }
 
-async function addStory() {
-  const payload = {
-    title:    el('story-title').value.trim(),
-    tag:      el('story-tag').value.trim(),
-    ageGroup: el('story-age').value,
-    preview:  el('story-preview-text').value.trim(),
-    body:     el('story-body').value.trim(),
-    imageUrl: el('story-img').value.trim(),
-    featured: el('story-featured').value === 'true',
-  };
-  if (!payload.title || !payload.body) { toast('Title and story body are required', 'danger'); return; }
-  const res = await apiFetch('/api/stories', { method: 'POST', body: JSON.stringify(payload) });
+async function addEvent() {
+  const title    = el('event-title').value.trim();
+  const date     = el('event-date').value;
+  const time     = el('event-time').value.trim();
+  const location = el('event-location').value.trim();
+  const info     = el('event-info').value.trim();
+  const fileInput = el('event-poster');
+
+  if (!title || !date) { toast('Title and date are required', 'danger'); return; }
+
+  const formData = new FormData();
+  formData.append('title', title);
+  formData.append('date', date);
+  formData.append('time', time);
+  formData.append('location', location);
+  formData.append('info', info);
+  if (fileInput.files[0]) formData.append('poster', fileInput.files[0]);
+
+  const btn = el('event-submit-btn');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  const res = await apiFetch('/api/events', { method: 'POST', body: formData });
+  btn.disabled = false; btn.textContent = 'Add Event';
+
   if (res && res.success) {
-    toast('Story published!', 'success');
-    ['story-title','story-tag','story-preview-text','story-body','story-img'].forEach(id => el(id).value = '');
-    el('story-age').value = 'All Ages';
-    el('story-featured').value = 'false';
-    await logAudit('PUBLISH_STORY', { title: payload.title, ageGroup: payload.ageGroup, featured: payload.featured });
-    loadStories();
+    toast('Event added!', 'success');
+    ['event-title','event-time','event-location','event-info'].forEach(id => el(id).value = '');
+    el('event-date').value = '';
+    fileInput.value = '';
+    await logAudit('CREATE_EVENT', { title, date });
+    loadEvents();
   } else {
-    toast('Publish failed — check server connection', 'danger');
+    toast('Add failed — check server connection', 'danger');
   }
 }
 
-async function featureStory(id) {
-  const story = allStories.find(s => s._id === id);
-  const res = await apiFetch('/api/stories/' + id + '/feature', { method: 'POST' });
+async function featureEvent(id) {
+  const ev = allEvents.find(e => e._id === id);
+  const res = await apiFetch('/api/events/' + id + '/feature', { method: 'PATCH' });
   if (res && res.success) {
-    toast('Story set as featured!', 'success');
-    await logAudit('FEATURE_STORY', { id, title: story?.title || '' });
-    loadStories();
+    toast('Event set as featured!', 'success');
+    await logAudit('FEATURE_EVENT', { id, title: ev?.title || '' });
+    loadEvents();
   } else {
     toast('Failed — check server connection', 'danger');
   }
 }
 
-function openDeleteStoryModal(id) {
-  deleteStoryId = id;
-  const story = allStories.find(s => s._id === id);
-  el('delete-story-title').textContent = story ? story.title : id;
-  el('delete-story-modal').classList.add('open');
+function openDeleteEventModal(id) {
+  deleteEventId = id;
+  const ev = allEvents.find(e => e._id === id);
+  el('delete-event-title').textContent = ev ? ev.title : id;
+  el('delete-event-modal').classList.add('open');
 }
-function closeDeleteStoryModal() {
-  deleteStoryId = null;
-  el('delete-story-modal').classList.remove('open');
+function closeDeleteEventModal() {
+  deleteEventId = null;
+  el('delete-event-modal').classList.remove('open');
 }
-async function confirmDeleteStory() {
-  if (!deleteStoryId) return;
-  const story = allStories.find(s => s._id === deleteStoryId);
-  const res = await apiFetch('/api/stories/' + deleteStoryId, { method: 'DELETE' });
-  closeDeleteStoryModal();
+async function confirmDeleteEvent() {
+  if (!deleteEventId) return;
+  const ev = allEvents.find(e => e._id === deleteEventId);
+  const res = await apiFetch('/api/events/' + deleteEventId, { method: 'DELETE' });
+  closeDeleteEventModal();
   if (res && res.success) {
-    toast('Story deleted', 'success');
-    await logAudit('DELETE_STORY', { id: deleteStoryId, title: story?.title || '' });
-    loadStories();
+    toast('Event deleted', 'success');
+    await logAudit('DELETE_EVENT', { id: deleteEventId, title: ev?.title || '' });
+    loadEvents();
   } else {
     toast('Delete failed — check server connection', 'danger');
   }
+}
+
+/* ══════════════ EVENT RECAPS ══════════════ */
+function recapImgUrl(imagePath) {
+  if (!imagePath) return '';
+  return API_URL + imagePath;
+}
+
+async function loadRecaps() {
+  const data = await apiFetch('/api/recaps');
+  allRecaps = Array.isArray(data) ? data : [];
+  el('recaps-count-badge').textContent = allRecaps.length + ' recaps';
+  renderRecapsList(allRecaps);
+}
+
+function renderRecapsList(list) {
+  const wrap = el('recaps-list');
+  if (!list.length) {
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><p>No recaps yet. Publish one above!</p></div>`;
+    return;
+  }
+  wrap.innerHTML = list.map(r => {
+    const cover = (r.images && r.images[0]) || '';
+    return `<div class="item-row">
+      <div class="item-thumb">${cover ? `<img src="${esc(recapImgUrl(cover))}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;" onerror="this.parentElement.textContent='🖼️'"/>` : '🖼️'}</div>
+      <div style="flex:1; min-width:0;">
+        <div class="item-title">${esc(r.title)}</div>
+        <div class="item-meta">${new Date(r.createdAt).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' })} · ${(r.images || []).length} image${(r.images || []).length === 1 ? '' : 's'}</div>
+        ${r.description ? `<div class="item-preview">${esc(r.description).slice(0, 100)}${r.description.length > 100 ? '…' : ''}</div>` : ''}
+      </div>
+      <div class="item-actions">
+        <button class="btn btn-sm btn-danger" onclick="openDeleteRecapModal('${r._id}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addRecap() {
+  const title       = el('recap-title').value.trim();
+  const description = el('recap-description').value.trim();
+  const fileInput    = el('recap-images');
+
+  if (!title) { toast('Recap title is required', 'danger'); return; }
+  if (!fileInput.files.length) { toast('At least one image is required', 'danger'); return; }
+  if (fileInput.files.length > 10) { toast('Max 10 images per recap', 'danger'); return; }
+
+  const formData = new FormData();
+  formData.append('title', title);
+  formData.append('description', description);
+  Array.from(fileInput.files).forEach(f => formData.append('images', f));
+
+  const btn = el('recap-submit-btn');
+  btn.disabled = true; btn.textContent = 'Publishing…';
+  const res = await apiFetch('/api/recaps', { method: 'POST', body: formData });
+  btn.disabled = false; btn.textContent = 'Publish Recap';
+
+  if (res && res.success) {
+    toast('Recap published!', 'success');
+    el('recap-title').value = '';
+    el('recap-description').value = '';
+    fileInput.value = '';
+    await logAudit('CREATE_RECAP', { title, images: fileInput.files.length });
+    loadRecaps();
+  } else {
+    toast('Publish failed — check server connection', 'danger');
+  }
+}
+
+function openDeleteRecapModal(id) {
+  deleteRecapId = id;
+  const r = allRecaps.find(x => x._id === id);
+  el('delete-recap-title').textContent = r ? r.title : id;
+  el('delete-recap-modal').classList.add('open');
+}
+function closeDeleteRecapModal() {
+  deleteRecapId = null;
+  el('delete-recap-modal').classList.remove('open');
+}
+async function confirmDeleteRecap() {
+  if (!deleteRecapId) return;
+  const r = allRecaps.find(x => x._id === deleteRecapId);
+  const res = await apiFetch('/api/recaps/' + deleteRecapId, { method: 'DELETE' });
+  closeDeleteRecapModal();
+  if (res && res.success) {
+    toast('Recap deleted', 'success');
+    await logAudit('DELETE_RECAP', { id: deleteRecapId, title: r?.title || '' });
+    loadRecaps();
+  } else {
+    toast('Delete failed — check server connection', 'danger');
+  }
+}
+
+/* ══════════════ VISITS (read-only) ══════════════ */
+async function loadVisits() {
+  const data = await apiFetch('/api/visits?upcoming=true');
+  allVisits = Array.isArray(data) ? data : [];
+  el('visits-count').textContent = allVisits.length + ' submissions';
+  renderVisitsTable(allVisits);
+}
+
+function renderVisitsTable(list) {
+  const tbody = el('visits-tbody');
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><p>No upcoming visit submissions</p></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(v => {
+    const visitDate = new Date(v.date).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' });
+    const submitted = new Date(v.createdAt).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' });
+    const needs = (v.needs || []).map(n => `<span class="badge badge-gray" style="margin-right:4px;">${esc(n)}</span>`).join('') || '—';
+    return `<tr>
+      <td><strong>${visitDate}</strong></td>
+      <td><span class="badge badge-blue">${esc(v.service)}</span></td>
+      <td>${esc(v.time || '—')}</td>
+      <td>${esc(v.name || 'Anonymous')}</td>
+      <td>${needs}</td>
+      <td style="color:var(--muted); font-size:12px;">${submitted}</td>
+    </tr>`;
+  }).join('');
 }
 
 /* ══════════════ DISCUSSION DELETE ══════════════ */
@@ -633,8 +789,6 @@ function setupCharCounters() {
     ['lesson-title', 'lesson-title-counter', 100],
     ['lesson-body',  'lesson-body-counter',  1000],
     ['ann-text',     'ann-text-counter',     200],
-    ['story-preview-text', 'story-preview-counter', 200],
-    ['story-body',   'story-body-counter',   3000],
   ];
   pairs.forEach(([inputId, counterId, max]) => {
     const input   = el(inputId);

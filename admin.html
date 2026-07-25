@@ -59,6 +59,7 @@
   .btn-success { background: #e8f5e9; color: var(--success); }
   .btn-success:hover { background: #c8e6c9; }
   .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* ── CONTENT ── */
   .content { padding: 32px; flex: 1; }
@@ -122,14 +123,14 @@
   .disc-body-preview { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
   .disc-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
 
-  /* ── STORY CARDS (kids) ── */
-  .story-row { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 14px; }
-  .story-row:last-child { border-bottom: none; }
-  .story-thumb { width: 60px; height: 60px; border-radius: 8px; background: var(--surface-3); object-fit: cover; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; }
-  .story-title { font-weight: 600; font-size: 14px; color: var(--primary); }
-  .story-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
-  .story-preview { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
-  .story-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+  /* ── EVENT / RECAP ROWS ── */
+  .item-row { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 14px; }
+  .item-row:last-child { border-bottom: none; }
+  .item-thumb { width: 60px; height: 60px; border-radius: 8px; background: var(--surface-3); object-fit: cover; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--muted); }
+  .item-title { font-weight: 600; font-size: 14px; color: var(--primary); }
+  .item-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .item-preview { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+  .item-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
 
   /* ── ANNOUNCEMENT ROWS ── */
   .ann-row { padding: 14px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
@@ -187,6 +188,10 @@
   .char-counter { font-size: 11px; color: var(--muted); text-align: right; margin-top: 4px; }
   .char-counter.warn { color: var(--danger); }
 
+  /* ── FILE INPUT ── */
+  .file-drop { border: 1.5px dashed var(--border); border-radius: 8px; padding: 16px; text-align: center; font-size: 12px; color: var(--muted); cursor: pointer; }
+  .file-drop:hover { border-color: var(--gold); }
+
   @media (max-width: 900px) {
     .sidebar { width: 200px; }
     .main { margin-left: 200px; }
@@ -221,10 +226,14 @@
       Announcements
     </button>
 
-    <div class="nav-label">Kids Corner</div>
-    <button class="nav-item" onclick="showPage('stories')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-      Bible Stories
+    <div class="nav-label">News Page</div>
+    <button class="nav-item" onclick="showPage('events')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      Events
+    </button>
+    <button class="nav-item" onclick="showPage('recaps')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+      Event Recaps
     </button>
 
     <div class="nav-label">Data</div>
@@ -239,6 +248,10 @@
     <button class="nav-item" onclick="showPage('discussions')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       Youth Discussions
+    </button>
+    <button class="nav-item" onclick="showPage('visits')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Plan Your Visit
     </button>
 
     <div class="nav-label">Settings</div>
@@ -334,14 +347,14 @@
             </div>
           </div>
         </div>
-        <div class="card" style="border-top: 3px solid #6a1b9a; cursor:pointer;" onclick="showPage('stories')">
+        <div class="card" style="border-top: 3px solid #6a1b9a; cursor:pointer;" onclick="showPage('events')">
           <div class="card-body" style="display:flex; align-items:center; gap:12px;">
             <div style="width:40px;height:40px;border-radius:10px;background:#f3e5f5;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6a1b9a" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6a1b9a" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
             </div>
             <div>
-              <div style="font-weight:600; font-size:14px; color:var(--primary);">Kids Stories</div>
-              <div style="font-size:12px; color:var(--muted);" id="dash-stories-count">Loading…</div>
+              <div style="font-weight:600; font-size:14px; color:var(--primary);">Upcoming Events</div>
+              <div style="font-size:12px; color:var(--muted);" id="dash-events-count">Loading…</div>
             </div>
           </div>
         </div>
@@ -421,7 +434,7 @@
             </div>
             <div class="form-group">
               <label>Scripture Verse</label>
-              <input type="text" id="lesson-verse" placeholder="e.g. "He restores my soul..." — Psalm 23:3" maxlength="200"/>
+              <input type="text" id="lesson-verse" placeholder="e.g. &quot;He restores my soul...&quot; — Psalm 23:3" maxlength="200"/>
               <div class="form-hint">Include quote marks and reference.</div>
             </div>
             <div class="form-group">
@@ -472,15 +485,25 @@
           <div class="card-header"><h3>Add Announcement</h3></div>
           <div class="card-body">
             <div class="form-group">
+              <label>Title (optional)</label>
+              <input type="text" id="ann-title" placeholder="e.g. Prayer Meeting" maxlength="100"/>
+            </div>
+            <div class="form-group">
               <label>Announcement Text</label>
               <input type="text" id="ann-text" placeholder="e.g. Prayer meeting this Friday at 6 PM" maxlength="200"/>
               <div class="char-counter" id="ann-text-counter">0 / 200</div>
             </div>
-            <div class="form-group">
-              <label>Visible Until (optional)</label>
-              <input type="date" id="ann-expires"/>
-              <div class="form-hint">Leave blank to show indefinitely.</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Category</label>
+                <input type="text" id="ann-category" placeholder="general" maxlength="40"/>
+              </div>
+              <div class="form-group">
+                <label>Visible Until (optional)</label>
+                <input type="date" id="ann-expires"/>
+              </div>
             </div>
+            <div class="form-hint" style="margin-bottom:12px;">Leave category blank for "general". Leave date blank to show indefinitely.</div>
             <button class="btn btn-primary" style="width:100%;" onclick="addAnnouncement()">Add to Ticker</button>
           </div>
         </div>
@@ -511,96 +534,105 @@
       </div>
     </div>
 
-    <!-- ══ KIDS STORIES PAGE ══ -->
-    <div class="page" id="page-stories">
+    <!-- ══ EVENTS PAGE ══ -->
+    <div class="page" id="page-events">
       <div class="two-col mb-20">
-        <!-- Add story form -->
         <div class="card">
-          <div class="card-header"><h3>Add Bible Story</h3></div>
+          <div class="card-header"><h3>Add Event</h3></div>
           <div class="card-body">
             <div class="form-group">
-              <label>Story Title</label>
-              <input type="text" id="story-title" placeholder="e.g. Noah's Floating Zoo" maxlength="100"/>
+              <label>Event Title</label>
+              <input type="text" id="event-title" placeholder="e.g. Youth Camp Meeting" maxlength="120"/>
             </div>
             <div class="form-row">
               <div class="form-group">
-                <label>Bible Character / Series</label>
-                <input type="text" id="story-tag" placeholder="e.g. The Great Flood" maxlength="60"/>
+                <label>Date</label>
+                <input type="date" id="event-date"/>
               </div>
               <div class="form-group">
-                <label>Age Group</label>
-                <select id="story-age">
-                  <option value="All Ages">All Ages</option>
-                  <option value="3–6">3–6 years</option>
-                  <option value="7–10">7–10 years</option>
-                  <option value="11+">11+ years</option>
-                </select>
+                <label>Time (optional)</label>
+                <input type="text" id="event-time" placeholder="e.g. 09:00 AM – 04:00 PM" maxlength="60"/>
               </div>
             </div>
             <div class="form-group">
-              <label>Story Preview (shown on card)</label>
-              <textarea id="story-preview-text" rows="3" maxlength="200" placeholder="Discover how Noah…"></textarea>
-              <div class="char-counter" id="story-preview-counter">0 / 200</div>
+              <label>Location (optional)</label>
+              <input type="text" id="event-location" placeholder="e.g. Church Main Hall" maxlength="150"/>
             </div>
             <div class="form-group">
-              <label>Full Story Content</label>
-              <textarea id="story-body" rows="6" maxlength="3000" placeholder="Write the full story here…"></textarea>
-              <div class="char-counter" id="story-body-counter">0 / 3000</div>
+              <label>Info (optional)</label>
+              <textarea id="event-info" rows="3" maxlength="1000" placeholder="More details about the event…"></textarea>
             </div>
             <div class="form-group">
-              <label>Cover Image URL (optional)</label>
-              <input type="url" id="story-img" placeholder="https://…"/>
-              <div class="form-hint">Leave blank to use a default emoji illustration.</div>
+              <label>Poster Image (optional)</label>
+              <input type="file" id="event-poster" accept="image/jpeg,image/png,image/webp"/>
+              <div class="form-hint">JPG, PNG, or WEBP — max 5MB.</div>
             </div>
-            <div class="form-group">
-              <label>Featured?</label>
-              <select id="story-featured">
-                <option value="false">Regular card</option>
-                <option value="true">Featured (large bento card)</option>
-              </select>
-            </div>
-            <button class="btn btn-primary" style="width:100%;" onclick="addStory()">Publish Story</button>
+            <button class="btn btn-primary" style="width:100%;" onclick="addEvent()" id="event-submit-btn">Add Event</button>
           </div>
         </div>
-
-        <!-- Stats + tips -->
-        <div style="display:flex; flex-direction:column; gap:20px;">
-          <div class="card">
-            <div class="card-body">
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                <div class="fund-stat">
-                  <div class="fund-stat-label">Total Stories</div>
-                  <div class="fund-stat-value" id="stories-total">—</div>
-                </div>
-                <div class="fund-stat">
-                  <div class="fund-stat-label">Featured</div>
-                  <div class="fund-stat-value" id="stories-featured">—</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-header"><h3>Tips for Kids Stories</h3></div>
-            <div class="card-body" style="font-size:13px; color:var(--muted); line-height:1.9;">
-              <ul style="padding-left:16px;">
-                <li>Keep titles short and exciting</li>
-                <li>Use simple language — age 6 reading level</li>
-                <li>End every story with a brief moral/lesson</li>
-                <li>Only one story should be Featured at a time</li>
-                <li>The "Heroes of the Faith" series works well as Featured</li>
-              </ul>
-            </div>
+        <div class="card">
+          <div class="card-header"><h3>Tips</h3></div>
+          <div class="card-body" style="font-size:13px; color:var(--muted); line-height:1.9;">
+            <ul style="padding-left:16px;">
+              <li>Only upcoming events (today or later) show on the public site</li>
+              <li>Only one event can be "Featured" at a time — featuring a new one un-features the last</li>
+              <li>Deleting an event also removes its uploaded poster file</li>
+            </ul>
           </div>
         </div>
       </div>
 
-      <!-- Stories list -->
       <div class="card">
         <div class="card-header">
-          <h3>All Bible Stories</h3>
-          <span class="badge badge-purple" id="stories-count-badge">0 stories</span>
+          <h3>All Upcoming Events</h3>
+          <span class="badge badge-purple" id="events-count-badge">0 events</span>
         </div>
-        <div id="stories-list">
+        <div id="events-list">
+          <div class="loading"><div class="spinner"></div> Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ EVENT RECAPS PAGE ══ -->
+    <div class="page" id="page-recaps">
+      <div class="two-col mb-20">
+        <div class="card">
+          <div class="card-header"><h3>Add Recap Gallery</h3></div>
+          <div class="card-body">
+            <div class="form-group">
+              <label>Recap Title</label>
+              <input type="text" id="recap-title" placeholder="e.g. Youth Camp 2026 Highlights" maxlength="120"/>
+            </div>
+            <div class="form-group">
+              <label>Description (optional)</label>
+              <textarea id="recap-description" rows="3" maxlength="1000" placeholder="A short recap of how the event went…"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Images (1–10)</label>
+              <input type="file" id="recap-images" accept="image/jpeg,image/png,image/webp" multiple/>
+              <div class="form-hint">JPG, PNG, or WEBP — max 5MB each, up to 10 images.</div>
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="addRecap()" id="recap-submit-btn">Publish Recap</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Tips</h3></div>
+          <div class="card-body" style="font-size:13px; color:var(--muted); line-height:1.9;">
+            <ul style="padding-left:16px;">
+              <li>At least one image is required per recap</li>
+              <li>Recaps are shown newest first on the public news page</li>
+              <li>Deleting a recap removes all its uploaded images</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>All Recaps</h3>
+          <span class="badge badge-purple" id="recaps-count-badge">0 recaps</span>
+        </div>
+        <div id="recaps-list">
           <div class="loading"><div class="spinner"></div> Loading…</div>
         </div>
       </div>
@@ -672,6 +704,28 @@
       </div>
     </div>
 
+    <!-- ══ VISITS PAGE ══ -->
+    <div class="page" id="page-visits">
+      <div class="card">
+        <div class="card-header">
+          <h3>Plan Your Visit Submissions</h3>
+          <span class="badge badge-gold" id="visits-count">0 submissions</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Visit Date</th><th>Service</th><th>Time</th><th>Name</th><th>Needs</th><th>Submitted</th>
+              </tr>
+            </thead>
+            <tbody id="visits-tbody">
+              <tr><td colspan="6"><div class="loading"><div class="spinner"></div> Loading…</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ══ SETTINGS PAGE ══ -->
     <div class="page" id="page-settings">
       <div class="two-col">
@@ -694,9 +748,11 @@
               <li>GET/POST /api/lesson</li>
               <li>GET/POST /api/theme</li>
               <li>GET/POST/DELETE /api/announcements</li>
-              <li>GET/POST/DELETE /api/stories</li>
+              <li>GET/POST/PATCH/DELETE /api/events</li>
+              <li>GET/POST/DELETE /api/recaps</li>
               <li>GET /api/fund · POST /api/fund/goal</li>
               <li>GET /api/donations</li>
+              <li>GET /api/visits</li>
               <li>GET/POST/DELETE /api/discussions</li>
             </ul>
           </div>
@@ -728,26 +784,6 @@
   </div>
 </div>
 
-<!-- ══════════════ DELETE STORY MODAL ══════════════ -->
-<div class="modal-overlay" id="delete-story-modal">
-  <div class="modal-box">
-    <div class="modal-header">
-      <h3>Delete Story</h3>
-      <button class="modal-close" onclick="closeDeleteStoryModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:14px; color:var(--muted);">Permanently remove this story from Kids Corner?</p>
-      <div style="margin-top:16px; padding:14px; background:var(--surface-2); border-radius:8px; border-left:3px solid var(--danger);">
-        <p style="font-size:13px; font-weight:600;" id="delete-story-title">—</p>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="closeDeleteStoryModal()" style="border:1px solid var(--border);">Cancel</button>
-      <button class="btn btn-danger" onclick="confirmDeleteStory()">Delete</button>
-    </div>
-  </div>
-</div>
-
 <!-- ══════════════ DELETE ANNOUNCEMENT MODAL ══════════════ -->
 <div class="modal-overlay" id="delete-ann-modal">
   <div class="modal-box">
@@ -764,6 +800,46 @@
     <div class="modal-footer">
       <button class="btn" onclick="closeDeleteAnnModal()" style="border:1px solid var(--border);">Cancel</button>
       <button class="btn btn-danger" onclick="confirmDeleteAnn()">Remove</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ DELETE EVENT MODAL ══════════════ -->
+<div class="modal-overlay" id="delete-event-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Delete Event</h3>
+      <button class="modal-close" onclick="closeDeleteEventModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:14px; color:var(--muted);">Permanently remove this event and its poster image?</p>
+      <div style="margin-top:16px; padding:14px; background:var(--surface-2); border-radius:8px; border-left:3px solid var(--danger);">
+        <p style="font-size:13px; font-weight:600;" id="delete-event-title">—</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeDeleteEventModal()" style="border:1px solid var(--border);">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDeleteEvent()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ DELETE RECAP MODAL ══════════════ -->
+<div class="modal-overlay" id="delete-recap-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Delete Recap</h3>
+      <button class="modal-close" onclick="closeDeleteRecapModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:14px; color:var(--muted);">Permanently remove this recap gallery and all its images?</p>
+      <div style="margin-top:16px; padding:14px; background:var(--surface-2); border-radius:8px; border-left:3px solid var(--danger);">
+        <p style="font-size:13px; font-weight:600;" id="delete-recap-title">—</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeDeleteRecapModal()" style="border:1px solid var(--border);">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDeleteRecap()">Delete</button>
     </div>
   </div>
 </div>
