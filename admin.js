@@ -13,6 +13,8 @@ let allAnnouncements = [];
 let allEvents        = [];
 let allRecaps        = [];
 let allVisits        = [];
+let selectedEventPoster = null;   // File or null
+let selectedRecapFiles  = [];     // File[]
 
 // Clear localhost URLs saved during local dev — they break the deployed app
 if (API_URL.includes('localhost') || API_URL.includes('127.0.0.1')) {
@@ -108,6 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   el('api-url-input').value    = API_URL;
   el('settings-api-url').value = API_URL;
   setupCharCounters();
+  setupImagePreviews();
   await checkStatus();  // wait for connection check before loading data
   loadAll();
 });
@@ -556,7 +559,6 @@ async function addEvent() {
   const time     = el('event-time').value.trim();
   const location = el('event-location').value.trim();
   const info     = el('event-info').value.trim();
-  const fileInput = el('event-poster');
 
   if (!title || !date) { toast('Title and date are required', 'danger'); return; }
 
@@ -566,7 +568,7 @@ async function addEvent() {
   formData.append('time', time);
   formData.append('location', location);
   formData.append('info', info);
-  if (fileInput.files[0]) formData.append('poster', fileInput.files[0]);
+  if (selectedEventPoster) formData.append('poster', selectedEventPoster);
 
   const btn = el('event-submit-btn');
   btn.disabled = true; btn.textContent = 'Adding…';
@@ -577,7 +579,7 @@ async function addEvent() {
     toast('Event added!', 'success');
     ['event-title','event-time','event-location','event-info'].forEach(id => el(id).value = '');
     el('event-date').value = '';
-    fileInput.value = '';
+    clearEventPoster();
     await logAudit('CREATE_EVENT', { title, date });
     loadEvents();
   } else {
@@ -659,16 +661,15 @@ function renderRecapsList(list) {
 async function addRecap() {
   const title       = el('recap-title').value.trim();
   const description = el('recap-description').value.trim();
-  const fileInput    = el('recap-images');
 
   if (!title) { toast('Recap title is required', 'danger'); return; }
-  if (!fileInput.files.length) { toast('At least one image is required', 'danger'); return; }
-  if (fileInput.files.length > 10) { toast('Max 10 images per recap', 'danger'); return; }
+  if (!selectedRecapFiles.length) { toast('At least one image is required', 'danger'); return; }
+  if (selectedRecapFiles.length > 10) { toast('Max 10 images per recap', 'danger'); return; }
 
   const formData = new FormData();
   formData.append('title', title);
   formData.append('description', description);
-  Array.from(fileInput.files).forEach(f => formData.append('images', f));
+  selectedRecapFiles.forEach(f => formData.append('images', f));
 
   const btn = el('recap-submit-btn');
   btn.disabled = true; btn.textContent = 'Publishing…';
@@ -679,8 +680,8 @@ async function addRecap() {
     toast('Recap published!', 'success');
     el('recap-title').value = '';
     el('recap-description').value = '';
-    fileInput.value = '';
-    await logAudit('CREATE_RECAP', { title, images: fileInput.files.length });
+    clearRecapFiles();
+    await logAudit('CREATE_RECAP', { title, images: selectedRecapFiles.length });
     loadRecaps();
   } else {
     toast('Publish failed — check server connection', 'danger');
@@ -709,6 +710,124 @@ async function confirmDeleteRecap() {
   } else {
     toast('Delete failed — check server connection', 'danger');
   }
+}
+
+/* ══════════════ IMAGE PREVIEWS (before upload) ══════════════ */
+const MAX_IMAGE_MB = 5;
+const ALLOWED_IMAGE_RE = /\.(jpe?g|png|webp|heic|heif)$/i;
+
+function humanFileSize(bytes) {
+  return (bytes / (1024 * 1024)).toFixed(1) + 'MB';
+}
+
+function setupImagePreviews() {
+  const posterInput = el('event-poster');
+  if (posterInput) {
+    posterInput.addEventListener('change', e => {
+      const file = e.target.files[0] || null;
+      if (file && !ALLOWED_IMAGE_RE.test(file.name)) {
+        toast('Unsupported file type — use JPG, PNG, WEBP, or HEIC/HEIF', 'danger');
+        posterInput.value = '';
+        return;
+      }
+      if (file && file.size > MAX_IMAGE_MB * 1024 * 1024) {
+        toast(`"${file.name}" is over ${MAX_IMAGE_MB}MB`, 'danger');
+        posterInput.value = '';
+        return;
+      }
+      selectedEventPoster = file;
+      renderEventPosterPreview();
+    });
+  }
+
+  const recapInput = el('recap-images');
+  if (recapInput) {
+    recapInput.addEventListener('change', e => {
+      const incoming = Array.from(e.target.files);
+      for (const file of incoming) {
+        if (selectedRecapFiles.length >= 10) {
+          toast('Max 10 images per recap — extra files skipped', 'danger');
+          break;
+        }
+        if (!ALLOWED_IMAGE_RE.test(file.name)) {
+          toast(`Skipped "${file.name}" — unsupported type`, 'danger');
+          continue;
+        }
+        if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
+          toast(`Skipped "${file.name}" — over ${MAX_IMAGE_MB}MB`, 'danger');
+          continue;
+        }
+        const isDupe = selectedRecapFiles.some(f =>
+          f.name === file.name && f.size === file.size && f.lastModified === file.lastModified
+        );
+        if (!isDupe) selectedRecapFiles.push(file);
+      }
+      syncRecapInputFiles();
+      renderRecapPreview();
+    });
+  }
+}
+
+// Selecting files a second time replaces the browser's native FileList,
+// so we rebuild it via DataTransfer to keep everything picked so far —
+// this is what lets you add images across a few separate selections
+// and still see (and remove) all of them before hitting Publish.
+function syncRecapInputFiles() {
+  const dt = new DataTransfer();
+  selectedRecapFiles.forEach(f => dt.items.add(f));
+  el('recap-images').files = dt.files;
+}
+
+function renderEventPosterPreview() {
+  const wrap = el('event-poster-preview');
+  if (!selectedEventPoster) { wrap.innerHTML = ''; return; }
+  const url = URL.createObjectURL(selectedEventPoster);
+  wrap.innerHTML = `<div class="preview-thumb">
+    <img src="${url}" onload="URL.revokeObjectURL(this.src)"/>
+    <button type="button" class="preview-remove" onclick="clearEventPoster()">✕</button>
+    <span class="preview-name">${esc(selectedEventPoster.name)}</span>
+  </div>`;
+}
+
+function clearEventPoster() {
+  selectedEventPoster = null;
+  el('event-poster').value = '';
+  el('event-poster-preview').innerHTML = '';
+}
+
+function renderRecapPreview() {
+  const wrap  = el('recap-images-preview');
+  const count = el('recap-images-count');
+
+  if (!selectedRecapFiles.length) {
+    wrap.innerHTML  = '';
+    count.textContent = '';
+    return;
+  }
+
+  wrap.innerHTML = selectedRecapFiles.map((f, i) => {
+    const url = URL.createObjectURL(f);
+    return `<div class="preview-thumb">
+      <img src="${url}" onload="URL.revokeObjectURL(this.src)"/>
+      <button type="button" class="preview-remove" onclick="removeRecapFile(${i})">✕</button>
+      <span class="preview-name">${esc(f.name)}</span>
+    </div>`;
+  }).join('');
+
+  count.textContent = `${selectedRecapFiles.length} / 10 selected`;
+  count.classList.toggle('warn', selectedRecapFiles.length >= 10);
+}
+
+function removeRecapFile(index) {
+  selectedRecapFiles.splice(index, 1);
+  syncRecapInputFiles();
+  renderRecapPreview();
+}
+
+function clearRecapFiles() {
+  selectedRecapFiles = [];
+  syncRecapInputFiles();
+  renderRecapPreview();
 }
 
 /* ══════════════ VISITS (read-only) ══════════════ */

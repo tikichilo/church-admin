@@ -192,6 +192,16 @@
   .file-drop { border: 1.5px dashed var(--border); border-radius: 8px; padding: 16px; text-align: center; font-size: 12px; color: var(--muted); cursor: pointer; }
   .file-drop:hover { border-color: var(--gold); }
 
+  /* ── IMAGE PREVIEW GRID ── */
+  .preview-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  .preview-thumb { position: relative; width: 84px; }
+  .preview-thumb img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; background: var(--surface-2); }
+  .preview-remove { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; background: var(--danger); color: #fff; border: 2px solid #fff; cursor: pointer; font-size: 11px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; }
+  .preview-remove:hover { background: #8f1414; }
+  .preview-name { display: block; font-size: 10px; color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+  .preview-count { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .preview-count.warn { color: var(--danger); font-weight: 600; }
+
   @media (max-width: 900px) {
     .sidebar { width: 200px; }
     .main { margin-left: 200px; }
@@ -566,6 +576,7 @@
               <label>Poster Image (optional)</label>
               <input type="file" id="event-poster" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"/>
               <div class="form-hint">JPG, PNG, WEBP, or iPhone HEIC/HEIF — max 5MB. HEIC photos are automatically converted.</div>
+              <div class="preview-grid" id="event-poster-preview"></div>
             </div>
             <button class="btn btn-primary" style="width:100%;" onclick="addEvent()" id="event-submit-btn">Add Event</button>
           </div>
@@ -611,6 +622,8 @@
               <label>Images (1–10)</label>
               <input type="file" id="recap-images" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple/>
               <div class="form-hint">JPG, PNG, WEBP, or iPhone HEIC/HEIF — max 5MB each, up to 10 images. HEIC photos are automatically converted.</div>
+              <div class="preview-grid" id="recap-images-preview"></div>
+              <div class="preview-count" id="recap-images-count"></div>
             </div>
             <button class="btn btn-primary" style="width:100%;" onclick="addRecap()" id="recap-submit-btn">Publish Recap</button>
           </div>
