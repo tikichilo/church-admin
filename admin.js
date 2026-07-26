@@ -508,9 +508,12 @@ async function confirmDeleteAnn() {
 }
 
 /* ══════════════ EVENTS ══════════════ */
+// Event posters are now full Cloudinary URLs (https://res.cloudinary.com/...).
+// The API_URL prefix only applies to legacy local /uploads/... paths from
+// before the Cloudinary migration, if any still exist in the database.
 function eventImgUrl(posterUrl) {
   if (!posterUrl) return '';
-  return API_URL + posterUrl;
+  return /^https?:\/\//.test(posterUrl) ? posterUrl : API_URL + posterUrl;
 }
 
 async function loadEvents() {
@@ -621,7 +624,7 @@ async function confirmDeleteEvent() {
 /* ══════════════ EVENT RECAPS ══════════════ */
 function recapImgUrl(imagePath) {
   if (!imagePath) return '';
-  return API_URL + imagePath;
+  return /^https?:\/\//.test(imagePath) ? imagePath : API_URL + imagePath;
 }
 
 async function loadRecaps() {

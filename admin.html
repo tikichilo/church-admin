@@ -564,8 +564,8 @@
             </div>
             <div class="form-group">
               <label>Poster Image (optional)</label>
-              <input type="file" id="event-poster" accept="image/jpeg,image/png,image/webp"/>
-              <div class="form-hint">JPG, PNG, or WEBP — max 5MB.</div>
+              <input type="file" id="event-poster" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"/>
+              <div class="form-hint">JPG, PNG, WEBP, or iPhone HEIC/HEIF — max 5MB. HEIC photos are automatically converted.</div>
             </div>
             <button class="btn btn-primary" style="width:100%;" onclick="addEvent()" id="event-submit-btn">Add Event</button>
           </div>
@@ -609,8 +609,8 @@
             </div>
             <div class="form-group">
               <label>Images (1–10)</label>
-              <input type="file" id="recap-images" accept="image/jpeg,image/png,image/webp" multiple/>
-              <div class="form-hint">JPG, PNG, or WEBP — max 5MB each, up to 10 images.</div>
+              <input type="file" id="recap-images" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple/>
+              <div class="form-hint">JPG, PNG, WEBP, or iPhone HEIC/HEIF — max 5MB each, up to 10 images. HEIC photos are automatically converted.</div>
             </div>
             <button class="btn btn-primary" style="width:100%;" onclick="addRecap()" id="recap-submit-btn">Publish Recap</button>
           </div>

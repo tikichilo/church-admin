@@ -1,32 +1,31 @@
 /**
  * server.js — Makeni Central SDA Church — ADMIN SERVER
- * Node.js + Express + MongoDB (Mongoose)
+ * Node.js + Express + MongoDB (Mongoose) + Cloudinary
  *
- * This is the authenticated admin backend: login/signup, JWT auth,
- * audit logging, and superadmin controls, plus the write-side routes
- * for content the public site displays (announcements, lesson/theme,
- * events, recaps). Public GET routes are included so the admin
- * dashboard (and, if pointed here, the public site) can read data;
- * all write methods (POST/PUT/PATCH/DELETE) on admin-managed
- * collections require a valid, non-blocked admin/superadmin JWT.
- *
- * Story model and all kids-page-related content/routes have been
- * removed — kids.html no longer has a backend-driven "stories" feed.
+ * Image handling now mirrors the TXC Motors admin server: uploads are
+ * held in memory only (never written to local disk) and pushed straight
+ * to Cloudinary, which gives persistent storage across deploys (Render's
+ * local filesystem is wiped on every redeploy/restart — local disk
+ * storage was silently losing images) plus automatic format handling —
+ * including Apple's HEIC/HEIF photos, which Cloudinary decodes and
+ * re-encodes to JPG on upload so every image is guaranteed to actually
+ * render in a normal browser `<img>` tag, regardless of what format the
+ * admin's phone or camera originally captured it in.
  */
 
 'use strict';
 
-const express    = require('express');
-const mongoose   = require('mongoose');
-const cors       = require('cors');
-const path       = require('path');
-const fs         = require('fs');
-const multer     = require('multer');
-const bcrypt     = require('bcryptjs');
-const jwt        = require('jsonwebtoken');
-const crypto     = require('crypto');
-const nodemailer = require('nodemailer');
-const cron       = require('node-cron');
+const express     = require('express');
+const mongoose    = require('mongoose');
+const cors        = require('cors');
+const path        = require('path');
+const multer      = require('multer');
+const bcrypt      = require('bcryptjs');
+const jwt         = require('jsonwebtoken');
+const crypto      = require('crypto');
+const nodemailer  = require('nodemailer');
+const cron        = require('node-cron');
+const cloudinary  = require('cloudinary').v2;
 require('dotenv').config();
 
 const JWT_SECRET  = process.env.JWT_SECRET  || 'change-this-secret-in-production';
@@ -34,6 +33,120 @@ const INVITE_CODE = (process.env.INVITE_CODE || 'MAKENI-2025').toUpperCase();
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
+
+
+/* ═══════════════════════════════════════════════
+   ENV CHECKS — fail fast rather than silently
+   misbehaving in production.
+═══════════════════════════════════════════════ */
+if (!process.env.MONGO_URI) {
+  console.error('❌ Missing MONGO_URI');
+  process.exit(1);
+}
+if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+  console.error('❌ Missing Cloudinary env vars — set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET');
+  process.exit(1);
+}
+
+
+/* ═══════════════════════════════════════════════
+   CLOUDINARY CONFIG
+═══════════════════════════════════════════════ */
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Uploads a single in-memory file buffer to Cloudinary.
+// `format: 'jpg'` forces Cloudinary to decode whatever it was given —
+// JPG, PNG, WEBP, or Apple's HEIC/HEIF — and re-encode it as a JPG on
+// their end, so every image stored ends up in a universally-renderable
+// format no matter what the admin uploaded it as.
+function uploadImageBuffer(buffer, folder) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder, resource_type: 'image', format: 'jpg' },
+      (err, result) => {
+        if (err) return reject(err);
+        resolve(result.secure_url);
+      }
+    );
+    stream.end(buffer);
+  });
+}
+
+async function uploadImageBuffers(files, folder) {
+  const urls = [];
+  for (const file of files) {
+    try {
+      const url = await uploadImageBuffer(file.buffer, folder);
+      urls.push(url);
+    } catch (err) {
+      console.error('⚠️  Image upload failed, skipping:', err.message);
+    }
+  }
+  return urls;
+}
+
+// Best-effort Cloudinary delete — never throws. Only touches URLs that
+// actually point at our Cloudinary account; anything else (old local
+// /uploads/... paths left over from before this migration) is ignored.
+async function deleteCloudinaryImage(imageUrl) {
+  try {
+    if (!imageUrl || !imageUrl.includes('res.cloudinary.com')) return;
+    const parts    = imageUrl.split('/');
+    const filename = parts[parts.length - 1].split('.')[0];
+    const folder   = parts[parts.length - 2];
+    const publicId = `${folder}/${filename}`;
+    await cloudinary.uploader.destroy(publicId);
+  } catch (err) {
+    console.warn('⚠️  Cloudinary delete failed:', err.message);
+  }
+}
+
+
+/* ═══════════════════════════════════════════════
+   UPLOADS — multer stays in charge of parsing the
+   multipart/form-data request, but now uses memory
+   storage: files land in req.file.buffer / req.files[].buffer
+   and go straight to Cloudinary, never touching local disk.
+═══════════════════════════════════════════════ */
+const memoryStorage = multer.memoryStorage();
+
+// Accepts standard web formats plus Apple's HEIC/HEIF. iOS Safari and
+// the Photos app usually report HEIC files with one of the mimetypes
+// below, but mimetype sniffing for HEIC is notoriously inconsistent
+// across browsers/OSes — some report 'application/octet-stream' — so
+// we also fall back to checking the file extension.
+const IMAGE_MIME_TYPES = [
+  'image/jpeg', 'image/png', 'image/webp',
+  'image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence',
+];
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'];
+const IMAGE_FILTER_ERROR = 'Only JPG, PNG, WEBP, and HEIC/HEIF (iPhone) images are allowed';
+
+function imageFileFilter(req, file, cb) {
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const mimeOk = IMAGE_MIME_TYPES.includes(file.mimetype);
+  const extOk  = IMAGE_EXTENSIONS.includes(ext);
+  if (!mimeOk && !extOk) {
+    return cb(new Error(IMAGE_FILTER_ERROR));
+  }
+  cb(null, true);
+}
+
+const uploadEventPoster = multer({
+  storage: memoryStorage,
+  fileFilter: imageFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+});
+
+const uploadRecapImages = multer({
+  storage: memoryStorage,
+  fileFilter: imageFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024, files: 10 }, // 5MB each, 10 max
+});
 
 
 /* ═══════════════════════════════════════════════
@@ -45,63 +158,6 @@ app.use(express.static(path.join(__dirname)));
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'login.html'));
 });
-
-
-/* ═══════════════════════════════════════════════
-   UPLOADS (event posters + recap gallery images)
-   Stored under <root>/uploads/... so express.static above serves
-   them directly at /uploads/events/<file> and /uploads/recaps/<file>.
-   Non-image files and anything over 5MB are rejected before they
-   touch disk.
-═══════════════════════════════════════════════ */
-const UPLOAD_ROOT      = path.join(__dirname, 'uploads');
-const EVENT_UPLOAD_DIR = path.join(UPLOAD_ROOT, 'events');
-const RECAP_UPLOAD_DIR = path.join(UPLOAD_ROOT, 'recaps');
-[EVENT_UPLOAD_DIR, RECAP_UPLOAD_DIR].forEach(dir => fs.mkdirSync(dir, { recursive: true }));
-
-const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const IMAGE_FILTER_ERROR = 'Only JPG, PNG, and WEBP images are allowed';
-
-function makeStorage(dir) {
-  return multer.diskStorage({
-    destination: (req, file, cb) => cb(null, dir),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      const safeExt = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext) ? ext : '.jpg';
-      cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`);
-    },
-  });
-}
-
-function imageFileFilter(req, file, cb) {
-  if (!IMAGE_MIME_TYPES.includes(file.mimetype)) {
-    return cb(new Error(IMAGE_FILTER_ERROR));
-  }
-  cb(null, true);
-}
-
-const uploadEventPoster = multer({
-  storage: makeStorage(EVENT_UPLOAD_DIR),
-  fileFilter: imageFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-});
-
-const uploadRecapImages = multer({
-  storage: makeStorage(RECAP_UPLOAD_DIR),
-  fileFilter: imageFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024, files: 10 }, // 5MB each, 10 max
-});
-
-// Best-effort file deletion — never throws, just logs if it fails
-function deleteUploadedFile(publicUrl) {
-  if (!publicUrl) return;
-  const filePath = path.join(__dirname, publicUrl);
-  fs.unlink(filePath, err => {
-    if (err && err.code !== 'ENOENT') {
-      console.warn('Could not delete uploaded file:', filePath, err.message);
-    }
-  });
-}
 
 
 /* ═══════════════════════════════════════════════
@@ -364,7 +420,7 @@ const themeSchema = new mongoose.Schema({
 });
 const Theme = mongoose.model('Theme', themeSchema);
 
-// ── Announcement — now matches the public site's fields ──
+// ── Announcement ──
 const ANNOUNCEMENT_REACTION_KEYS = ['amen', 'love', 'praise'];
 
 const announcementSchema = new mongoose.Schema({
@@ -384,37 +440,39 @@ const Announcement = mongoose.model('Announcement', announcementSchema);
 // ── Visit — "Plan Your Visit" modal submissions ──
 const visitSchema = new mongoose.Schema({
   date:      { type: Date,   required: true },
-  service:   { type: String, required: true, maxlength: 60  }, // e.g. "Divine Service"
-  time:      { type: String, default: '',    maxlength: 60  }, // e.g. "11:00 AM"
+  service:   { type: String, required: true, maxlength: 60  },
+  time:      { type: String, default: '',    maxlength: 60  },
   name:      { type: String, default: '',    maxlength: 100 },
-  needs:     { type: [String], default: [] },                  // e.g. ["prayer","welcome"]
+  needs:     { type: [String], default: [] },
   createdAt: { type: Date,   default: Date.now },
 });
 const Visit = mongoose.model('Visit', visitSchema);
 
-// Allowed values, kept in sync with the service buttons / checkboxes in index.html
 const VISIT_SERVICES = ['Sabbath School', 'Divine Service', 'Bible Study', 'Full Day'];
 const VISIT_NEEDS     = ['prayer', 'welcome', 'kids', 'transport'];
 
 // ── Event — Upcoming Events + Featured Event on news.html ──
+// posterUrl now stores a full Cloudinary secure_url (or '' if none),
+// not a local /uploads/... path.
 const eventSchema = new mongoose.Schema({
   title:     { type: String,  required: true, maxlength: 120 },
-  posterUrl: { type: String,  default: '' },                  // /uploads/events/<file>
+  posterUrl: { type: String,  default: '' },
   date:      { type: Date,    required: true },
-  time:      { type: String,  default: '',    maxlength: 60  }, // e.g. "09:00 AM – 04:00 PM"
+  time:      { type: String,  default: '',    maxlength: 60  },
   location:  { type: String,  default: '',    maxlength: 150 },
   info:      { type: String,  default: '',    maxlength: 1000 },
-  featured:  { type: Boolean, default: false },                 // only one should be true at a time
+  featured:  { type: Boolean, default: false },
   createdAt: { type: Date,    default: Date.now },
 });
 const Event = mongoose.model('Event', eventSchema);
 
 // ── Recap — Event Recaps gallery on news.html ──
+// images now stores full Cloudinary secure_urls.
 const recapSchema = new mongoose.Schema({
   title:       { type: String, required: true, maxlength: 120 },
   description: { type: String, default: '',    maxlength: 1000 },
   images: {
-    type: [String],   // /uploads/recaps/<file>, up to 10
+    type: [String],
     default: [],
     validate: {
       validator: arr => arr.length > 0 && arr.length <= 10,
@@ -531,10 +589,6 @@ app.get('/api/announcements', async (req, res) => {
   }
 });
 
-// POST /api/announcements/:id/react — public reaction toggle. No user
-// accounts exist for visitors, so this trusts the client's `active`
-// flag (the frontend tracks each visitor's own toggle in localStorage
-// and just tells the server whether to add or remove one).
 app.post('/api/announcements/:id/react', async (req, res) => {
   try {
     const { reaction, active } = req.body;
@@ -548,9 +602,6 @@ app.post('/api/announcements/:id/react', async (req, res) => {
       { new: true }
     );
     if (!ann) return res.status(404).json({ error: 'Not found' });
-
-    // Guard against the count dipping below 0 (e.g. a stale toggle from
-    // a second tab).
     if (ann.reactions[reaction] < 0) {
       ann.reactions[reaction] = 0;
       await ann.save();
@@ -562,8 +613,6 @@ app.post('/api/announcements/:id/react', async (req, res) => {
   }
 });
 
-// POST /api/visits — saves a "Plan Your Visit" submission. Public/unauthenticated:
-// the people filling out this modal on the public site aren't logged in.
 app.post('/api/visits', async (req, res) => {
   try {
     const { date, service, time, name, needs } = req.body;
@@ -581,7 +630,6 @@ app.post('/api/visits', async (req, res) => {
       return res.status(400).json({ error: 'Invalid service' });
     }
 
-    // Drop any need values that aren't in our known list, just in case
     const cleanNeeds = Array.isArray(needs)
       ? needs.filter(n => VISIT_NEEDS.includes(n))
       : [];
@@ -601,7 +649,6 @@ app.post('/api/visits', async (req, res) => {
   }
 });
 
-// GET /api/events — upcoming events only, soonest first
 app.get('/api/events', async (req, res) => {
   try {
     const now = new Date();
@@ -613,7 +660,6 @@ app.get('/api/events', async (req, res) => {
   }
 });
 
-// GET /api/events/featured — the single event currently marked featured
 app.get('/api/events/featured', async (req, res) => {
   try {
     const event = await Event
@@ -627,7 +673,6 @@ app.get('/api/events/featured', async (req, res) => {
   }
 });
 
-// GET /api/recaps — newest recap galleries first
 app.get('/api/recaps', async (req, res) => {
   try {
     const recaps = await Recap.find().sort({ createdAt: -1 }).lean();
@@ -672,7 +717,6 @@ async function audit(req, action, details = {}) {
 
 /* ═══════════════════════════════════════════════
    STRICT AUTH MIDDLEWARE
-   Checks DB for blocked status + records lastSeen
 ═══════════════════════════════════════════════ */
 
 async function requireAuthStrict(req, res, next) {
@@ -693,10 +737,6 @@ async function requireAuthStrict(req, res, next) {
   }
 }
 
-// Apply strict auth to all admin write routes.
-// GET requests on these paths pass through (public reads); anything
-// that mutates data (POST/PUT/PATCH/DELETE) requires a valid,
-// non-blocked admin/superadmin JWT.
 app.use([
   '/api/audit',
   '/api/donations',
@@ -740,8 +780,6 @@ app.get('/api/donations', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/visits — admin-only list of planned visits, soonest upcoming first.
-// Optional ?upcoming=true filters out past dates.
 app.get('/api/visits', requireAuth, async (req, res) => {
   try {
     const { upcoming } = req.query;
@@ -837,25 +875,31 @@ app.delete('/api/announcements/:id', requireAuth, async (req, res) => {
 });
 
 // POST /api/events — multipart/form-data: fields + a single `poster` file.
-// Poster is optional; requireAuth is applied via the blanket app.use above.
+// The file is parsed into memory by multer, then streamed straight to
+// Cloudinary — nothing is ever written to local disk.
 app.post('/api/events', uploadEventPoster.single('poster'), async (req, res) => {
   try {
     const { title, date, time, location, info } = req.body;
 
     if (!title || !date) {
-      if (req.file) deleteUploadedFile(`/uploads/events/${req.file.filename}`);
       return res.status(400).json({ error: 'Title and date are required' });
     }
 
     const parsedDate = new Date(date);
     if (isNaN(parsedDate.getTime())) {
-      if (req.file) deleteUploadedFile(`/uploads/events/${req.file.filename}`);
       return res.status(400).json({ error: 'Invalid date' });
+    }
+
+    let posterUrl = '';
+    if (req.file) {
+      console.log('⬆️  Uploading event poster to Cloudinary...');
+      posterUrl = await uploadImageBuffer(req.file.buffer, 'makeni-central/events');
+      console.log('✅ Poster uploaded');
     }
 
     const event = await Event.create({
       title:     title.slice(0, 120),
-      posterUrl: req.file ? `/uploads/events/${req.file.filename}` : '',
+      posterUrl,
       date:      parsedDate,
       time:      (time || '').slice(0, 60),
       location:  (location || '').slice(0, 150),
@@ -870,7 +914,6 @@ app.post('/api/events', uploadEventPoster.single('poster'), async (req, res) => 
   }
 });
 
-// PATCH /api/events/:id/feature — marks one event as featured, unmarking any other
 app.patch('/api/events/:id/feature', async (req, res) => {
   try {
     const exists = await Event.exists({ _id: req.params.id });
@@ -892,7 +935,7 @@ app.delete('/api/events/:id', async (req, res) => {
     const event = await Event.findByIdAndDelete(req.params.id);
     if (!event) return res.status(404).json({ error: 'Not found' });
 
-    deleteUploadedFile(event.posterUrl);
+    await deleteCloudinaryImage(event.posterUrl);
     await audit(req, 'DELETE_EVENT', { eventId: event._id, title: event.title });
     res.json({ success: true });
   } catch (err) {
@@ -907,15 +950,19 @@ app.post('/api/recaps', uploadRecapImages.array('images', 10), async (req, res) 
     const { title, description } = req.body;
 
     if (!title) {
-      (req.files || []).forEach(f => deleteUploadedFile(`/uploads/recaps/${f.filename}`));
       return res.status(400).json({ error: 'Title is required' });
     }
-
     if (!req.files || !req.files.length) {
       return res.status(400).json({ error: 'At least one image is required' });
     }
 
-    const images = req.files.map(f => `/uploads/recaps/${f.filename}`);
+    console.log(`⬆️  Uploading ${req.files.length} recap image(s) to Cloudinary...`);
+    const images = await uploadImageBuffers(req.files, 'makeni-central/recaps');
+    console.log(`✅ Uploaded ${images.length} image(s)`);
+
+    if (!images.length) {
+      return res.status(500).json({ error: 'All image uploads failed — please try again' });
+    }
 
     const recap = await Recap.create({
       title:       title.slice(0, 120),
@@ -927,7 +974,6 @@ app.post('/api/recaps', uploadRecapImages.array('images', 10), async (req, res) 
     res.status(201).json({ success: true, id: recap._id });
   } catch (err) {
     console.error('POST /api/recaps:', err);
-    (req.files || []).forEach(f => deleteUploadedFile(`/uploads/recaps/${f.filename}`));
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -937,7 +983,9 @@ app.delete('/api/recaps/:id', async (req, res) => {
     const recap = await Recap.findByIdAndDelete(req.params.id);
     if (!recap) return res.status(404).json({ error: 'Not found' });
 
-    (recap.images || []).forEach(deleteUploadedFile);
+    for (const imgUrl of (recap.images || [])) {
+      await deleteCloudinaryImage(imgUrl);
+    }
     await audit(req, 'DELETE_RECAP', { recapId: recap._id, title: recap.title });
     res.json({ success: true });
   } catch (err) {
@@ -1100,12 +1148,14 @@ const CLEARABLE = {
   visits:        () => Visit.deleteMany({}),
   events: async () => {
     const docs = await Event.find({}, 'posterUrl').lean();
-    docs.forEach(d => deleteUploadedFile(d.posterUrl));
+    for (const d of docs) await deleteCloudinaryImage(d.posterUrl);
     return Event.deleteMany({});
   },
   recaps: async () => {
     const docs = await Recap.find({}, 'images').lean();
-    docs.forEach(d => (d.images || []).forEach(deleteUploadedFile));
+    for (const d of docs) {
+      for (const img of (d.images || [])) await deleteCloudinaryImage(img);
+    }
     return Recap.deleteMany({});
   },
 };
@@ -1138,7 +1188,6 @@ app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res)
    CRON JOBS
 ═══════════════════════════════════════════════ */
 
-// Every Thursday at midnight (UTC) — clear expired announcements + reset lesson & theme
 cron.schedule('0 0 * * 4', async () => {
   try {
     const now = new Date();
@@ -1151,7 +1200,6 @@ cron.schedule('0 0 * * 4', async () => {
   }
 });
 
-// Every 30 minutes — ping self to prevent Render free-tier spin-down
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 cron.schedule('*/30 * * * *', async () => {
   try {
@@ -1165,9 +1213,6 @@ cron.schedule('*/30 * * * *', async () => {
 
 /* ═══════════════════════════════════════════════
    ERROR HANDLING — must be registered after all routes.
-   Catches multer upload errors (bad file type, too large, too many
-   files) and returns clean JSON instead of Express's default HTML
-   stack trace.
 ═══════════════════════════════════════════════ */
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
