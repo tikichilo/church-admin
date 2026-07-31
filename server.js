@@ -443,7 +443,7 @@ const visitSchema = new mongoose.Schema({
   service:   { type: String, required: true, maxlength: 60  },
   time:      { type: String, default: '',    maxlength: 60  },
   name:      { type: String, default: '',    maxlength: 100 },
-  needs:     { type: [String], default: [] },
+  phone:     { type: String, default: '',    maxlength: 20  },
   createdAt: { type: Date,   default: Date.now },
 });
 const Visit = mongoose.model('Visit', visitSchema);
@@ -612,10 +612,9 @@ app.post('/api/announcements/:id/react', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
 app.post('/api/visits', async (req, res) => {
   try {
-    const { date, service, time, name, needs } = req.body;
+    const { date, service, time, name, phone } = req.body;
 
     if (!date || !service) {
       return res.status(400).json({ error: 'Date and service are required' });
@@ -630,16 +629,12 @@ app.post('/api/visits', async (req, res) => {
       return res.status(400).json({ error: 'Invalid service' });
     }
 
-    const cleanNeeds = Array.isArray(needs)
-      ? needs.filter(n => VISIT_NEEDS.includes(n))
-      : [];
-
     const visit = await Visit.create({
       date:    parsedDate,
       service,
       time:    (time || '').slice(0, 60),
       name:    (name || '').slice(0, 100),
-      needs:   cleanNeeds,
+      phone:   (phone || '').slice(0, 20),
     });
 
     res.status(201).json({ success: true, id: visit._id });
@@ -870,6 +865,33 @@ app.delete('/api/announcements/:id', requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /api/announcements/:id:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── DELETE /api/visits/:id ──
+// Removes a single visit submission.
+app.delete('/api/visits/:id', async (req, res) => {
+  try {
+    const deleted = await Visit.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Visit not found' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /api/visits/:id:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── DELETE /api/visits ──
+// Clears ALL visit submissions.
+app.delete('/api/visits', async (req, res) => {
+  try {
+    await Visit.deleteMany({});
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /api/visits:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

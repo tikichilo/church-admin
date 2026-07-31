@@ -716,29 +716,31 @@
         </div>
       </div>
     </div>
-
-    <!-- ══ VISITS PAGE ══ -->
+<!-- ══ VISITS PAGE ══ -->
     <div class="page" id="page-visits">
       <div class="card">
         <div class="card-header">
           <h3>Plan Your Visit Submissions</h3>
-          <span class="badge badge-gold" id="visits-count">0 submissions</span>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="badge badge-gold" id="visits-count">0 submissions</span>
+            <button class="btn btn-danger btn-sm" id="visits-clear-all" type="button">Clear All</button>
+          </div>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Visit Date</th><th>Service</th><th>Time</th><th>Name</th><th>Needs</th><th>Submitted</th>
+                <th>Visit Date</th><th>Service</th><th>Time</th><th>Name</th><th>Phone</th><th>Submitted</th><th>Actions</th>
               </tr>
             </thead>
             <tbody id="visits-tbody">
-              <tr><td colspan="6"><div class="loading"><div class="spinner"></div> Loading…</div></td></tr>
+              <tr><td colspan="7"><div class="loading"><div class="spinner"></div> Loading…</div></td></tr>
             </tbody>
           </table>
         </div>
       </div>
     </div>
-
+    
     <!-- ══ SETTINGS PAGE ══ -->
     <div class="page" id="page-settings">
       <div class="two-col">

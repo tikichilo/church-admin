@@ -830,7 +830,7 @@ function clearRecapFiles() {
   renderRecapPreview();
 }
 
-/* ══════════════ VISITS (read-only) ══════════════ */
+/* ══════════════ VISITS ══════════════ */
 async function loadVisits() {
   const data = await apiFetch('/api/visits?upcoming=true');
   allVisits = Array.isArray(data) ? data : [];
@@ -841,22 +841,83 @@ async function loadVisits() {
 function renderVisitsTable(list) {
   const tbody = el('visits-tbody');
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><p>No upcoming visit submissions</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><p>No upcoming visit submissions</p></div></td></tr>`;
     return;
   }
   tbody.innerHTML = list.map(v => {
+    const id        = v._id || v.id;
     const visitDate = new Date(v.date).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' });
     const submitted = new Date(v.createdAt).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' });
-    const needs = (v.needs || []).map(n => `<span class="badge badge-gray" style="margin-right:4px;">${esc(n)}</span>`).join('') || '—';
-    return `<tr>
+    const phone     = v.phone
+      ? `<a href="tel:${esc(v.phone)}" style="color:inherit; text-decoration:underline;">${esc(v.phone)}</a>`
+      : '—';
+    return `<tr data-visit-id="${esc(id)}">
       <td><strong>${visitDate}</strong></td>
       <td><span class="badge badge-blue">${esc(v.service)}</span></td>
       <td>${esc(v.time || '—')}</td>
       <td>${esc(v.name || 'Anonymous')}</td>
-      <td>${needs}</td>
+      <td>${phone}</td>
       <td style="color:var(--muted); font-size:12px;">${submitted}</td>
+      <td><button class="btn btn-danger btn-sm visit-delete-btn" type="button" data-visit-id="${esc(id)}">Delete</button></td>
     </tr>`;
   }).join('');
+
+  wireVisitDeleteButtons(tbody);
+}
+
+function wireVisitDeleteButtons(tbody) {
+  tbody.querySelectorAll('.visit-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.visitId;
+      if (!id) return;
+      if (!confirm('Delete this visit submission? This cannot be undone.')) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Deleting…';
+
+      try {
+        const res = await fetch('/api/visits/' + id, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Delete failed');
+
+        allVisits = allVisits.filter(v => (v._id || v.id) !== id);
+        el('visits-count').textContent = allVisits.length + ' submissions';
+        renderVisitsTable(allVisits);
+      } catch (e) {
+        console.error('[dashboard] delete visit failed:', e);
+        btn.disabled = false;
+        btn.textContent = 'Delete';
+        alert('Could not delete this submission. Please try again.');
+      }
+    });
+  });
+}
+
+function initVisitsClearAll() {
+  const clearBtn = el('visits-clear-all');
+  if (!clearBtn) return;
+
+  clearBtn.addEventListener('click', async () => {
+    if (!allVisits.length) return;
+    if (!confirm('Clear ALL visit submissions? This cannot be undone.')) return;
+
+    clearBtn.disabled = true;
+    clearBtn.textContent = 'Clearing…';
+
+    try {
+      const res = await fetch('/api/visits', { method: 'DELETE' });
+      if (!res.ok) throw new Error('Clear failed');
+
+      allVisits = [];
+      el('visits-count').textContent = '0 submissions';
+      renderVisitsTable(allVisits);
+    } catch (e) {
+      console.error('[dashboard] clear all visits failed:', e);
+      alert('Could not clear submissions. Please try again.');
+    } finally {
+      clearBtn.disabled = false;
+      clearBtn.textContent = 'Clear All';
+    }
+  });
 }
 
 /* ══════════════ DISCUSSION DELETE ══════════════ */
