@@ -42,11 +42,20 @@
   .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #4caf50; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(76,175,80,0.25); }
   .status-dot.offline { background: var(--danger); box-shadow: 0 0 0 2px rgba(186,26,26,0.25); }
 
+  /* ── SIDEBAR OVERLAY (mobile) ── */
+  .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(4,21,52,0.55); z-index: 99; opacity: 0; transition: opacity 0.25s ease; }
+  .sidebar-overlay.open { display: block; opacity: 1; }
+
+  /* ── HAMBURGER (mobile) ── */
+  .hamburger-btn { display: none; background: none; border: none; cursor: pointer; padding: 6px; color: var(--primary); flex-shrink: 0; }
+  .hamburger-btn svg { width: 22px; height: 22px; display: block; }
+
   /* ── MAIN ── */
-  .main { margin-left: 240px; flex: 1; min-height: 100vh; display: flex; flex-direction: column; }
-  .topbar { background: #fff; border-bottom: 1px solid var(--border); padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
-  .topbar-title { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700; color: var(--primary); }
-  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .main { margin-left: 240px; flex: 1; min-height: 100vh; display: flex; flex-direction: column; min-width: 0; }
+  .topbar { background: #fff; border-bottom: 1px solid var(--border); padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; gap: 12px; }
+  .topbar-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .topbar-title { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700; color: var(--primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topbar-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
   .api-input-wrap { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
   .api-input-wrap input { border: none; background: none; font-size: 13px; width: 220px; font-family: 'DM Sans', sans-serif; color: var(--text); outline: none; }
   .btn { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
@@ -62,7 +71,7 @@
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* ── CONTENT ── */
-  .content { padding: 32px; flex: 1; }
+  .content { padding: 32px; flex: 1; min-width: 0; }
   .page { display: none; }
   .page.active { display: block; }
 
@@ -80,20 +89,20 @@
 
   /* ── CARDS ── */
   .card { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .card-header { padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .card-header { padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .card-header h3 { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: var(--primary); }
   .card-body { padding: 24px; }
 
   /* ── TABLE ── */
-  .table-wrap { overflow-x: auto; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border); }
+  th { text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
   td { padding: 13px 16px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: var(--surface-2); }
 
   /* ── BADGE ── */
-  .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
+  .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; }
   .badge-gold { background: #fff3cd; color: var(--gold); }
   .badge-green { background: #e8f5e9; color: var(--success); }
   .badge-blue { background: #e3f2fd; color: #1565c0; }
@@ -115,7 +124,7 @@
   .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--gold) 0%, var(--gold-dim) 100%); border-radius: 100px; transition: width 0.6s ease; }
 
   /* ── DISCUSSION CARD ── */
-  .disc-row { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 14px; }
+  .disc-row { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
   .disc-row:last-child { border-bottom: none; }
   .disc-avatar { width: 38px; height: 38px; border-radius: 50%; background: var(--gold-lt); color: var(--gold); font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .disc-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
@@ -124,7 +133,7 @@
   .disc-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
 
   /* ── EVENT / RECAP ROWS ── */
-  .item-row { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 14px; }
+  .item-row { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
   .item-row:last-child { border-bottom: none; }
   .item-thumb { width: 60px; height: 60px; border-radius: 8px; background: var(--surface-3); object-fit: cover; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--muted); }
   .item-title { font-weight: 600; font-size: 14px; color: var(--primary); }
@@ -133,10 +142,10 @@
   .item-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
 
   /* ── ANNOUNCEMENT ROWS ── */
-  .ann-row { padding: 14px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .ann-row { padding: 14px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .ann-row:last-child { border-bottom: none; }
   .ann-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
-  .ann-text { font-size: 14px; color: var(--text); flex: 1; }
+  .ann-text { font-size: 14px; color: var(--text); flex: 1; min-width: 180px; }
   .ann-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
   /* ── MODAL ── */
@@ -151,8 +160,8 @@
   .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; }
 
   /* ── TOAST ── */
-  #toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
-  .toast { background: var(--primary); color: #fff; padding: 12px 20px; border-radius: 100px; font-size: 13px; font-weight: 600; border-left: 4px solid var(--gold-dim); opacity: 0; transform: translateY(12px); transition: all 0.3s ease; pointer-events: none; white-space: nowrap; }
+  #toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; max-width: calc(100vw - 32px); }
+  .toast { background: var(--primary); color: #fff; padding: 12px 20px; border-radius: 100px; font-size: 13px; font-weight: 600; border-left: 4px solid var(--gold-dim); opacity: 0; transform: translateY(12px); transition: all 0.3s ease; pointer-events: none; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .toast.show { opacity: 1; transform: translateY(0); }
   .toast.t-success { border-color: #4caf50; }
   .toast.t-danger { border-color: var(--danger); background: #2d0a0a; }
@@ -180,7 +189,7 @@
   .mb-20 { margin-bottom: 20px; }
   .mt-20 { margin-top: 20px; }
 
-  /* ── LESSON PREVIEW ── */
+  /* ── LESSON PREVIEW (kept for potential re-use, currently unused) ── */
   .lesson-preview { background: var(--surface-2); border-radius: 10px; padding: 20px; border-left: 3px solid var(--gold); font-size: 13px; line-height: 1.7; color: var(--muted); }
   .lesson-preview strong { color: var(--primary); }
 
@@ -202,15 +211,45 @@
   .preview-count { font-size: 11px; color: var(--muted); margin-top: 6px; }
   .preview-count.warn { color: var(--danger); font-weight: 600; }
 
+  /* ══════════════ RESPONSIVE / MOBILE ══════════════ */
   @media (max-width: 900px) {
-    .sidebar { width: 200px; }
-    .main { margin-left: 200px; }
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .sidebar { width: 260px; transform: translateX(-100%); transition: transform 0.28s ease; box-shadow: 0 0 40px rgba(0,0,0,0.35); }
+    .sidebar.open { transform: translateX(0); }
+    .main { margin-left: 0; }
+    .hamburger-btn { display: flex; align-items: center; justify-content: center; }
+    .topbar { padding: 0 16px; }
+    .api-input-wrap { display: none; } /* manage the API URL from the Settings page on mobile */
+    .content { padding: 18px; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .two-col, .three-col { grid-template-columns: 1fr; }
+    .form-row { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 560px) {
+    .stats-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-card { padding: 14px 16px; }
+    .stat-value { font-size: 21px; }
+    .stat-label { font-size: 10px; }
+    .topbar { height: 56px; }
+    .topbar-title { font-size: 16px; }
+    .card-header { padding: 14px 16px; }
+    .card-body { padding: 16px; }
+    .item-row, .disc-row, .ann-row { padding: 14px 16px; }
+    .item-actions, .disc-actions, .ann-actions { margin-left: 0; width: 100%; justify-content: flex-end; }
+    table { font-size: 12px; }
+    th, td { padding: 9px 10px; }
+    .modal-box { max-width: 100%; border-radius: 14px; }
+    .modal-body, .modal-header, .modal-footer { padding-left: 18px; padding-right: 18px; }
+    #toast-container { left: 16px; right: 16px; align-items: stretch; }
+    .toast { white-space: normal; text-align: center; }
+    .fund-display { grid-template-columns: 1fr 1fr; }
   }
 </style>
 </head>
 <body>
+
+<!-- ══════════════ SIDEBAR OVERLAY (mobile) ══════════════ -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
 
 <!-- ══════════════ SIDEBAR ══════════════ -->
 <aside class="sidebar">
@@ -227,9 +266,9 @@
     </button>
 
     <div class="nav-label">Home Page</div>
-    <button class="nav-item" onclick="showPage('lesson')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-      Lesson of the Week
+    <button class="nav-item" onclick="showPage('theme')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      Theme of the Month
     </button>
     <button class="nav-item" onclick="showPage('announcements')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -296,7 +335,12 @@
 <!-- ══════════════ MAIN ══════════════ -->
 <div class="main">
   <div class="topbar">
-    <span class="topbar-title" id="page-title">Dashboard</span>
+    <div class="topbar-left">
+      <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <span class="topbar-title" id="page-title">Dashboard</span>
+    </div>
     <div class="topbar-right">
       <div class="api-input-wrap">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
@@ -335,14 +379,14 @@
 
       <!-- Quick links row -->
       <div class="three-col mb-20">
-        <div class="card" style="border-top: 3px solid var(--gold); cursor:pointer;" onclick="showPage('lesson')">
+        <div class="card" style="border-top: 3px solid var(--gold); cursor:pointer;" onclick="showPage('theme')">
           <div class="card-body" style="display:flex; align-items:center; gap:12px;">
             <div style="width:40px;height:40px;border-radius:10px;background:#fff3cd;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#755b00" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#755b00" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
             </div>
             <div>
-              <div style="font-weight:600; font-size:14px; color:var(--primary);">Lesson of the Week</div>
-              <div style="font-size:12px; color:var(--muted);" id="dash-lesson-title">Loading…</div>
+              <div style="font-weight:600; font-size:14px; color:var(--primary);">Theme of the Month</div>
+              <div style="font-size:12px; color:var(--muted);">Update the home page focus</div>
             </div>
           </div>
         </div>
@@ -414,54 +458,8 @@
       </div>
     </div>
 
-    <!-- ══ LESSON OF THE WEEK PAGE ══ -->
-    <div class="page" id="page-lesson">
-      <div class="two-col mb-20">
-        <!-- Current lesson preview -->
-        <div class="card">
-          <div class="card-header">
-            <h3>Current Lesson</h3>
-            <span class="badge badge-green" id="lesson-status-badge">Saved</span>
-          </div>
-          <div class="card-body">
-            <div class="lesson-preview" id="lesson-current-preview">
-              <strong id="lp-title">Loading…</strong><br/>
-              <em id="lp-verse" style="color:var(--gold);"></em><br/><br/>
-              <span id="lp-body"></span>
-            </div>
-            <p class="form-hint" style="margin-top:12px;">This is what currently appears on <strong>index.html</strong> under "Lesson of the Week".</p>
-          </div>
-        </div>
-
-        <!-- Edit form -->
-        <div class="card">
-          <div class="card-header"><h3>Edit Lesson</h3></div>
-          <div class="card-body">
-            <div class="form-group">
-              <label>Lesson Title</label>
-              <input type="text" id="lesson-title" placeholder="e.g. The Promise of Restoration" maxlength="100"/>
-              <div class="char-counter" id="lesson-title-counter">0 / 100</div>
-            </div>
-            <div class="form-group">
-              <label>Scripture Verse</label>
-              <input type="text" id="lesson-verse" placeholder="e.g. &quot;He restores my soul...&quot; — Psalm 23:3" maxlength="200"/>
-              <div class="form-hint">Include quote marks and reference.</div>
-            </div>
-            <div class="form-group">
-              <label>Lesson Body</label>
-              <textarea id="lesson-body" rows="5" maxlength="1000" placeholder="This week we explore…"></textarea>
-              <div class="char-counter" id="lesson-body-counter">0 / 1000</div>
-            </div>
-            <div class="form-group">
-              <label>Read Full Lesson URL (optional)</label>
-              <input type="url" id="lesson-url" placeholder="https://…"/>
-            </div>
-            <button class="btn btn-primary" style="width:100%;" onclick="saveLesson()">Save Lesson</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Theme of the Month -->
+    <!-- ══ THEME OF THE MONTH PAGE ══ -->
+    <div class="page" id="page-theme">
       <div class="card">
         <div class="card-header">
           <h3>Theme of the Month</h3>
@@ -500,8 +498,8 @@
             </div>
             <div class="form-group">
               <label>Announcement Text</label>
-              <input type="text" id="ann-text" placeholder="e.g. Prayer meeting this Friday at 6 PM" maxlength="200"/>
-              <div class="char-counter" id="ann-text-counter">0 / 200</div>
+              <textarea id="ann-text" rows="3" placeholder="e.g. Prayer meeting this Friday at 6 PM"></textarea>
+              <div class="char-counter" id="ann-text-counter">0 characters</div>
             </div>
             <div class="form-row">
               <div class="form-group">
@@ -522,7 +520,7 @@
         <div class="card">
           <div class="card-header"><h3>Ticker Preview</h3></div>
           <div class="card-body" style="padding:0; overflow:hidden; border-radius:0 0 12px 12px;">
-            <div style="background:#fed977; padding:12px 20px; font-size:13px; font-weight:600; color:#755b00; overflow:hidden; white-space:nowrap;">
+            <div style="background:#fed977; padding:12px 20px; font-size:13px; font-weight:600; color:#755b00; overflow-x:auto; white-space:nowrap;">
               <div id="ann-ticker-preview" style="display:inline;">Loading announcements…</div>
             </div>
             <div style="padding:16px 20px;">
@@ -740,7 +738,7 @@
         </div>
       </div>
     </div>
-    
+
     <!-- ══ SETTINGS PAGE ══ -->
     <div class="page" id="page-settings">
       <div class="two-col">
@@ -760,7 +758,6 @@
             <p><strong style="color:var(--primary);">Makeni Central SDA Admin</strong></p>
             <p style="margin-top:8px;">Manages all website data via <code style="background:var(--surface-2); padding:2px 6px; border-radius:4px;">server.js</code> endpoints:</p>
             <ul style="margin-top:8px; padding-left:18px; line-height:2;">
-              <li>GET/POST /api/lesson</li>
               <li>GET/POST /api/theme</li>
               <li>GET/POST/DELETE /api/announcements</li>
               <li>GET/POST/PATCH/DELETE /api/events</li>

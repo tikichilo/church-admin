@@ -111,6 +111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   el('settings-api-url').value = API_URL;
   setupCharCounters();
   setupImagePreviews();
+  initVisitsClearAll();
   await checkStatus();  // wait for connection check before loading data
   loadAll();
 });
@@ -118,7 +119,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 /* ══════════════ NAVIGATION ══════════════ */
 const pageTitles = {
   dashboard:     'Dashboard',
-  lesson:        'Lesson of the Week',
+  theme:         'Theme of the Month',
   announcements: 'Announcements',
   events:        'Events',
   recaps:        'Event Recaps',
@@ -136,6 +137,19 @@ function showPage(name) {
     if (btn.getAttribute('onclick')?.includes("'" + name + "'")) btn.classList.add('active');
   });
   el('page-title').textContent = pageTitles[name] || name;
+  closeSidebar();
+}
+
+/* ══════════════ MOBILE SIDEBAR ══════════════ */
+function toggleSidebar() {
+  document.querySelector('.sidebar').classList.toggle('open');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (overlay) overlay.classList.toggle('open');
+}
+function closeSidebar() {
+  document.querySelector('.sidebar').classList.remove('open');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (overlay) overlay.classList.remove('open');
 }
 
 /* ══════════════ API ══════════════ */
@@ -214,7 +228,7 @@ async function loadAll() {
     loadFund(),
     loadDonations(),
     loadDiscussions(),
-    loadLesson(),
+    loadTheme(),
     loadAnnouncements(),
     loadEvents(),
     loadRecaps(),
@@ -348,59 +362,13 @@ function renderRecentDiscussions(list) {
   }).join('');
 }
 
-/* ══════════════ LESSON OF THE WEEK ══════════════ */
-async function loadLesson() {
-  const [data, themeData] = await Promise.all([
-    apiFetch('/api/lesson'),
-    apiFetch('/api/theme'),
-  ]);
-
-  // Populate lesson fields
-  if (!data) {
-    el('dash-lesson-title').textContent = 'Not set';
-    el('lp-title').textContent = 'No lesson set yet';
-    el('lp-verse').textContent = '';
-    el('lp-body').textContent  = '';
-  } else {
-    el('dash-lesson-title').textContent = data.title || 'Untitled';
-    el('lp-title').textContent = data.title || '—';
-    el('lp-verse').textContent = data.verse || '';
-    el('lp-body').textContent  = data.body  || '';
-    el('lesson-title').value = data.title || '';
-    el('lesson-verse').value = data.verse || '';
-    el('lesson-body').value  = data.body  || '';
-    el('lesson-url').value   = data.url   || '';
-    updateCharCounter('lesson-title', 'lesson-title-counter', 100);
-    updateCharCounter('lesson-body', 'lesson-body-counter', 1000);
-  }
-
-  // Populate theme fields independently (theme can exist without a lesson)
-  const theme = (data && data.theme) || themeData;
+/* ══════════════ THEME OF THE MONTH ══════════════ */
+async function loadTheme() {
+  const theme = await apiFetch('/api/theme');
   if (theme) {
     el('theme-heading').value = theme.heading || '';
     el('theme-ref').value     = theme.ref     || '';
     el('theme-body').value    = theme.body    || '';
-  }
-}
-
-async function saveLesson() {
-  const payload = {
-    title: el('lesson-title').value.trim(),
-    verse: el('lesson-verse').value.trim(),
-    body:  el('lesson-body').value.trim(),
-    url:   el('lesson-url').value.trim(),
-  };
-  if (!payload.title || !payload.body) { toast('Title and body are required', 'danger'); return; }
-  const res = await apiFetch('/api/lesson', { method: 'POST', body: JSON.stringify(payload) });
-  if (res && res.success) {
-    toast('Lesson saved!', 'success');
-    el('lp-title').textContent = payload.title;
-    el('lp-verse').textContent = payload.verse;
-    el('lp-body').textContent  = payload.body;
-    el('dash-lesson-title').textContent = payload.title;
-    await logAudit('SAVE_LESSON', { title: payload.title, verse: payload.verse });
-  } else {
-    toast('Save failed — check server connection', 'danger');
   }
 }
 
@@ -443,7 +411,6 @@ function renderAnnouncementsList(list) {
     return;
   }
   wrap.innerHTML = list.map(a => {
-    const expires = a.expiresAt ? new Date(a.expiresAt).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' }) : 'Always';
     const reactionSummary = a.reactions
       ? `🙏 ${a.reactions.amen || 0} · ❤️ ${a.reactions.love || 0} · 🎉 ${a.reactions.praise || 0}`
       : '';
@@ -453,8 +420,7 @@ function renderAnnouncementsList(list) {
         ${a.title ? `<strong>${esc(a.title)}</strong> — ` : ''}${esc(a.text)}
         ${reactionSummary ? `<div style="font-size:11px; color:var(--muted); margin-top:2px;">${reactionSummary}</div>` : ''}
       </div>
-      <span class="badge badge-blue" style="margin-right:6px;">${esc(a.category || 'general')}</span>
-      <span class="badge badge-gray" style="margin-right:8px;">Until: ${expires}</span>
+      <span class="badge badge-blue" style="margin-right:8px;">${esc(a.category || 'general')}</span>
       <div class="ann-actions">
         <button class="btn btn-sm btn-danger" onclick="openDeleteAnnModal('${a._id}')">Remove</button>
       </div>
@@ -463,22 +429,20 @@ function renderAnnouncementsList(list) {
 }
 
 async function addAnnouncement() {
-  const title   = el('ann-title').value.trim();
-  const text    = el('ann-text').value.trim();
+  const title    = el('ann-title').value.trim();
+  const text     = el('ann-text').value.trim();
   const category = el('ann-category').value.trim();
-  const expires = el('ann-expires').value;
   if (!text) { toast('Announcement text is required', 'danger'); return; }
   const payload = { text };
   if (title)    payload.title    = title;
   if (category) payload.category = category;
-  if (expires)  payload.expiresAt = expires;
   const res = await apiFetch('/api/announcements', { method: 'POST', body: JSON.stringify(payload) });
   if (res && res.success) {
     toast('Announcement added!', 'success');
     el('ann-title').value    = '';
     el('ann-text').value     = '';
     el('ann-category').value = '';
-    el('ann-expires').value  = '';
+    updateAnnCharCounter();
     await logAudit('ADD_ANNOUNCEMENT', { title: payload.title || '', text: payload.text, category: payload.category || 'general' });
     loadAnnouncements();
   } else {
@@ -966,26 +930,19 @@ function saveApiUrl() {
   loadAll();
 }
 
-/* ══════════════ CHAR COUNTERS ══════════════ */
+/* ══════════════ CHAR COUNTER (announcement text — no hard cap) ══════════════ */
 function setupCharCounters() {
-  const pairs = [
-    ['lesson-title', 'lesson-title-counter', 100],
-    ['lesson-body',  'lesson-body-counter',  1000],
-    ['ann-text',     'ann-text-counter',     200],
-  ];
-  pairs.forEach(([inputId, counterId, max]) => {
-    const input   = el(inputId);
-    const counter = el(counterId);
-    if (!input || !counter) return;
-    input.addEventListener('input', () => updateCharCounter(inputId, counterId, max));
-  });
+  const input = el('ann-text');
+  if (!input) return;
+  input.addEventListener('input', updateAnnCharCounter);
+  updateAnnCharCounter();
 }
-function updateCharCounter(inputId, counterId, max) {
-  const len = (el(inputId)?.value || '').length;
-  const counter = el(counterId);
-  if (!counter) return;
-  counter.textContent = `${len} / ${max}`;
-  counter.classList.toggle('warn', len > max * 0.9);
+function updateAnnCharCounter() {
+  const input   = el('ann-text');
+  const counter = el('ann-text-counter');
+  if (!input || !counter) return;
+  const len = (input.value || '').length;
+  counter.textContent = len === 1 ? '1 character' : len + ' characters';
 }
 
 /* ══════════════ HELPERS ══════════════ */

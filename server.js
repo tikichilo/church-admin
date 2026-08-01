@@ -2,9 +2,16 @@
  * server.js — Makeni Central SDA Church — ADMIN SERVER
  * Node.js + Express + MongoDB (Mongoose) + Cloudinary
  *
- * Image handling now mirrors the TXC Motors admin server: uploads are
- * held in memory only (never written to local disk) and pushed straight
- * to Cloudinary, which gives persistent storage across deploys (Render's
+ * This server exists to power the admin dashboard only. Public-facing
+ * write actions (donations, discussion submissions, visit planner
+ * submissions, announcement reactions) are handled by the public site's
+ * own server and are NOT duplicated here — this server only reads that
+ * shared data back out for the dashboard, plus handles everything an
+ * admin does (create/update/delete content, auth, audit log).
+ *
+ * Image handling mirrors the TXC Motors admin server: uploads are held
+ * in memory only (never written to local disk) and pushed straight to
+ * Cloudinary, which gives persistent storage across deploys (Render's
  * local filesystem is wiped on every redeploy/restart — local disk
  * storage was silently losing images) plus automatic format handling —
  * including Apple's HEIC/HEIF photos, which Cloudinary decodes and
@@ -403,15 +410,6 @@ const discussionSchema = new mongoose.Schema({
 });
 const Discussion = mongoose.model('Discussion', discussionSchema);
 
-const lessonSchema = new mongoose.Schema({
-  title:     { type: String, required: true, maxlength: 100 },
-  verse:     { type: String, default: '',    maxlength: 200 },
-  body:      { type: String, required: true, maxlength: 1000 },
-  url:       { type: String, default: '' },
-  updatedAt: { type: Date,   default: Date.now },
-});
-const Lesson = mongoose.model('Lesson', lessonSchema);
-
 const themeSchema = new mongoose.Schema({
   heading:   { type: String, required: true, maxlength: 60 },
   ref:       { type: String, default: '',    maxlength: 40 },
@@ -448,9 +446,6 @@ const visitSchema = new mongoose.Schema({
 });
 const Visit = mongoose.model('Visit', visitSchema);
 
-const VISIT_SERVICES = ['Sabbath School', 'Divine Service', 'Bible Study', 'Full Day'];
-const VISIT_NEEDS     = ['prayer', 'welcome', 'kids', 'transport'];
-
 // ── Event — Upcoming Events + Featured Event on news.html ──
 // posterUrl now stores a full Cloudinary secure_url (or '' if none),
 // not a local /uploads/... path.
@@ -485,23 +480,10 @@ const Recap = mongoose.model('Recap', recapSchema);
 
 
 /* ═══════════════════════════════════════════════
-   ROUTES — PUBLIC
+   ROUTES — READS used by the admin dashboard
+   (also doubles as the data the public site displays,
+   but all public WRITES live on the other server)
 ═══════════════════════════════════════════════ */
-
-app.post('/api/donate', async (req, res) => {
-  try {
-    const { amount, currency } = req.body;
-    if (!amount || isNaN(amount) || Number(amount) <= 0) {
-      return res.status(400).json({ error: 'Invalid amount' });
-    }
-    const donation = await Donation.create({ amount: Number(amount), currency: currency || 'ZMW' });
-    await Fund.findOneAndUpdate({}, { $inc: { raised: Number(amount), donors: 1 } }, { upsert: true, new: true });
-    res.status(201).json({ success: true, id: donation._id });
-  } catch (err) {
-    console.error('POST /api/donate:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
 
 app.get('/api/fund', async (req, res) => {
   try {
@@ -522,46 +504,6 @@ app.get('/api/discussions', async (req, res) => {
     res.json(discussions);
   } catch (err) {
     console.error('GET /api/discussions:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.post('/api/discussions', async (req, res) => {
-  try {
-    const { name, category, title, body } = req.body;
-    if (!name || !category || !title || !body) {
-      return res.status(400).json({ error: 'All fields are required' });
-    }
-    const discussion = await Discussion.create({
-      name: name.slice(0, 100), category: category.slice(0, 60),
-      title: title.slice(0, 100), body: body.slice(0, 1000),
-    });
-    res.status(201).json({ success: true, id: discussion._id });
-  } catch (err) {
-    console.error('POST /api/discussions:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.post('/api/discussions/:id/like', async (req, res) => {
-  try {
-    const discussion = await Discussion.findByIdAndUpdate(req.params.id, { $inc: { likes: 1 } }, { new: true });
-    if (!discussion) return res.status(404).json({ error: 'Not found' });
-    res.json({ likes: discussion.likes });
-  } catch (err) {
-    console.error('POST /api/discussions/:id/like:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.get('/api/lesson', async (req, res) => {
-  try {
-    const lesson = await Lesson.findOne().sort({ updatedAt: -1 }).lean();
-    const theme  = await Theme.findOne().sort({ updatedAt: -1 }).lean();
-    if (!lesson) return res.json(null);
-    res.json({ ...lesson, theme: theme || null });
-  } catch (err) {
-    console.error('GET /api/lesson:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -589,61 +531,6 @@ app.get('/api/announcements', async (req, res) => {
   }
 });
 
-app.post('/api/announcements/:id/react', async (req, res) => {
-  try {
-    const { reaction, active } = req.body;
-    if (!ANNOUNCEMENT_REACTION_KEYS.includes(reaction)) {
-      return res.status(400).json({ error: 'Invalid reaction type' });
-    }
-    const delta = active ? 1 : -1;
-    let ann = await Announcement.findByIdAndUpdate(
-      req.params.id,
-      { $inc: { [`reactions.${reaction}`]: delta } },
-      { new: true }
-    );
-    if (!ann) return res.status(404).json({ error: 'Not found' });
-    if (ann.reactions[reaction] < 0) {
-      ann.reactions[reaction] = 0;
-      await ann.save();
-    }
-    res.json({ success: true, reactions: ann.reactions });
-  } catch (err) {
-    console.error('POST /api/announcements/:id/react:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-app.post('/api/visits', async (req, res) => {
-  try {
-    const { date, service, time, name, phone } = req.body;
-
-    if (!date || !service) {
-      return res.status(400).json({ error: 'Date and service are required' });
-    }
-
-    const parsedDate = new Date(date);
-    if (isNaN(parsedDate.getTime())) {
-      return res.status(400).json({ error: 'Invalid date' });
-    }
-
-    if (!VISIT_SERVICES.includes(service)) {
-      return res.status(400).json({ error: 'Invalid service' });
-    }
-
-    const visit = await Visit.create({
-      date:    parsedDate,
-      service,
-      time:    (time || '').slice(0, 60),
-      name:    (name || '').slice(0, 100),
-      phone:   (phone || '').slice(0, 20),
-    });
-
-    res.status(201).json({ success: true, id: visit._id });
-  } catch (err) {
-    console.error('POST /api/visits:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
 app.get('/api/events', async (req, res) => {
   try {
     const now = new Date();
@@ -651,19 +538,6 @@ app.get('/api/events', async (req, res) => {
     res.json(events);
   } catch (err) {
     console.error('GET /api/events:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.get('/api/events/featured', async (req, res) => {
-  try {
-    const event = await Event
-      .findOne({ featured: true, date: { $gte: new Date() } })
-      .sort({ date: 1 })
-      .lean();
-    res.json(event || null);
-  } catch (err) {
-    console.error('GET /api/events/featured:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -736,7 +610,6 @@ app.use([
   '/api/audit',
   '/api/donations',
   '/api/fund/goal',
-  '/api/lesson',
   '/api/theme',
   '/api/announcements',
   '/api/events',
@@ -811,19 +684,6 @@ app.post('/api/fund/goal', requireAuth, async (req, res) => {
     res.json({ success: true, goal: fund.goal });
   } catch (err) {
     console.error('POST /api/fund/goal:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.post('/api/lesson', requireAuth, async (req, res) => {
-  try {
-    const { title, verse, body, url } = req.body;
-    if (!title || !body) return res.status(400).json({ error: 'Title and body required' });
-    await Lesson.deleteMany({});
-    await Lesson.create({ title: title.slice(0,100), verse: (verse||'').slice(0,200), body: body.slice(0,1000), url: url||'' });
-    res.json({ success: true });
-  } catch (err) {
-    console.error('POST /api/lesson:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -1146,14 +1006,14 @@ app.get('/api/superadmin/audit', requireSuperAdmin, async (req, res) => {
 
 app.get('/api/superadmin/db-stats', requireSuperAdmin, async (req, res) => {
   try {
-    const [discussions, lessons, themes, announcements, donations, auditLogs, admins, visits, events, recaps] =
+    const [discussions, themes, announcements, donations, auditLogs, admins, visits, events, recaps] =
       await Promise.all([
-        Discussion.countDocuments(), Lesson.countDocuments(), Theme.countDocuments(),
+        Discussion.countDocuments(), Theme.countDocuments(),
         Announcement.countDocuments(), Donation.countDocuments(),
         AuditLog.countDocuments(), User.countDocuments(), Visit.countDocuments(),
         Event.countDocuments(), Recap.countDocuments(),
       ]);
-    res.json({ discussions, lessons, themes, announcements, donations, auditLogs, admins, visits, events, recaps });
+    res.json({ discussions, themes, announcements, donations, auditLogs, admins, visits, events, recaps });
   } catch (err) {
     console.error('GET /api/superadmin/db-stats:', err);
     res.status(500).json({ error: 'Server error' });
@@ -1162,7 +1022,6 @@ app.get('/api/superadmin/db-stats', requireSuperAdmin, async (req, res) => {
 
 const CLEARABLE = {
   discussions:   () => Discussion.deleteMany({}),
-  lessons:       () => Lesson.deleteMany({}),
   themes:        () => Theme.deleteMany({}),
   announcements: () => Announcement.deleteMany({}),
   donations:     () => Donation.deleteMany({}),
@@ -1190,7 +1049,7 @@ app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res)
     }
     const olderThanDays = parseInt(req.query.olderThan) || 0;
     let result;
-    if (olderThanDays > 0 && !['lessons', 'themes', 'events', 'recaps'].includes(key)) {
+    if (olderThanDays > 0 && !['themes', 'events', 'recaps'].includes(key)) {
       const cutoff = new Date(Date.now() - olderThanDays * 86400000);
       const Model = { discussions: Discussion, announcements: Announcement, donations: Donation, auditlogs: AuditLog, visits: Visit }[key];
       result = Model ? await Model.deleteMany({ createdAt: { $lt: cutoff } }) : await CLEARABLE[key]();
@@ -1210,13 +1069,15 @@ app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res)
    CRON JOBS
 ═══════════════════════════════════════════════ */
 
+// Weekly cleanup — clears out expired announcements only.
+// (Previously this also wiped every Theme of the Month and Lesson
+// document each Thursday, which meant the theme never survived a
+// full month. That was a bug, not intentional behaviour — fixed here.)
 cron.schedule('0 0 * * 4', async () => {
   try {
     const now = new Date();
-    const annResult    = await Announcement.deleteMany({ expiresAt: { $ne: null, $lte: now } });
-    const lessonResult = await Lesson.deleteMany({});
-    const themeResult  = await Theme.deleteMany({});
-    console.log(`[CRON] Thursday cleanup — removed ${annResult.deletedCount} announcement(s), cleared ${lessonResult.deletedCount} lesson(s) and ${themeResult.deletedCount} theme(s)`);
+    const annResult = await Announcement.deleteMany({ expiresAt: { $ne: null, $lte: now } });
+    console.log(`[CRON] Thursday cleanup — removed ${annResult.deletedCount} expired announcement(s)`);
   } catch (err) {
     console.error('[CRON] Thursday cleanup failed:', err);
   }
