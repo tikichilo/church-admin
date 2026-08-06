@@ -541,9 +541,9 @@ tr:hover td { background: #fafafa; }
       <div class="stats-grid" id="overview-stats">
         <div class="stat-card"><div class="stat-label">Admins</div><div class="stat-value" id="stat-admins">—</div><div class="stat-sub">registered accounts</div></div>
         <div class="stat-card"><div class="stat-label">Discussions</div><div class="stat-value" id="stat-discussions">—</div><div class="stat-sub">youth board posts</div></div>
-        <div class="stat-card"><div class="stat-label">Stories</div><div class="stat-value" id="stat-stories">—</div><div class="stat-sub">kids corner</div></div>
         <div class="stat-card"><div class="stat-label">Announcements</div><div class="stat-value" id="stat-announcements">—</div><div class="stat-sub">active notices</div></div>
         <div class="stat-card"><div class="stat-label">Donations</div><div class="stat-value" id="stat-donations">—</div><div class="stat-sub">giving records</div></div>
+        <div class="stat-card"><div class="stat-label">Visits</div><div class="stat-value" id="stat-visits">—</div><div class="stat-sub">plan-your-visit submissions</div></div>
         <div class="stat-card"><div class="stat-label">Audit Logs</div><div class="stat-value" id="stat-auditlogs">—</div><div class="stat-sub">tracked actions</div></div>
       </div>
 
@@ -599,18 +599,20 @@ tr:hover td { background: #fafafa; }
         </select>
         <select class="filter-select" id="audit-filter-action" onchange="loadAudit(1)">
           <option value="">All Actions</option>
-          <option>OPEN_DASHBOARD</option>
           <option>LOGIN</option>
           <option>LOGOUT</option>
           <option>CREATE_ANNOUNCEMENT</option>
           <option>DELETE_ANNOUNCEMENT</option>
-          <option>UPDATE_LESSON</option>
           <option>UPDATE_THEME</option>
-          <option>CREATE_STORY</option>
-          <option>DELETE_STORY</option>
-          <option>FEATURE_STORY</option>
-          <option>DELETE_DISCUSSION</option>
           <option>UPDATE_FUND_GOAL</option>
+          <option>DELETE_DISCUSSION</option>
+          <option>DELETE_VISIT</option>
+          <option>CLEAR_VISITS</option>
+          <option>CREATE_EVENT</option>
+          <option>FEATURE_EVENT</option>
+          <option>DELETE_EVENT</option>
+          <option>CREATE_RECAP</option>
+          <option>DELETE_RECAP</option>
           <option>BLOCK_ADMIN</option>
           <option>UNBLOCK_ADMIN</option>
           <option>DELETE_ADMIN</option>
@@ -843,12 +845,12 @@ function esc(s) {
 async function loadOverview() {
   const stats = await apiFetch('/api/superadmin/db-stats');
   if (stats) {
-    document.getElementById('stat-admins').textContent       = stats.admins;
-    document.getElementById('stat-discussions').textContent  = stats.discussions;
-    document.getElementById('stat-stories').textContent      = stats.stories;
-    document.getElementById('stat-announcements').textContent= stats.announcements;
-    document.getElementById('stat-donations').textContent    = stats.donations;
-    document.getElementById('stat-auditlogs').textContent    = stats.auditLogs;
+    document.getElementById('stat-admins').textContent       = stats.admins ?? 0;
+    document.getElementById('stat-discussions').textContent  = stats.discussions ?? 0;
+    document.getElementById('stat-announcements').textContent= stats.announcements ?? 0;
+    document.getElementById('stat-donations').textContent    = stats.donations ?? 0;
+    document.getElementById('stat-visits').textContent       = stats.visits ?? 0;
+    document.getElementById('stat-auditlogs').textContent    = stats.auditLogs ?? 0;
   }
 
   // Recent 8 audit entries
@@ -1049,15 +1051,22 @@ function clearAuditFilters() {
 
 /* ══════════════════════════════════════
    DATABASE MANAGER
+   NOTE: `key` below must match both (a) the field name the backend
+   returns from GET /api/superadmin/db-stats, and (b) what
+   DELETE /api/superadmin/db/:collection accepts (that route
+   lowercases whatever you send, so casing here is safe either way —
+   what matters is matching the db-stats field for the count to
+   display correctly).
 ══════════════════════════════════════ */
 const COLLECTIONS = [
   { key: 'discussions',   label: 'Discussions',   icon: '💬', note: 'Youth board posts', max: 500 },
-  { key: 'stories',       label: 'Stories',        icon: '📖', note: 'Kids corner stories', max: 200 },
   { key: 'announcements', label: 'Announcements',  icon: '📢', note: 'Ticker notices', max: 100 },
   { key: 'donations',     label: 'Donations',      icon: '💛', note: 'Giving records', max: 2000 },
-  { key: 'lessons',       label: 'Lessons',        icon: '📚', note: 'Lesson of the week (single doc)', max: 5 },
   { key: 'themes',        label: 'Themes',         icon: '✨', note: 'Theme of the month (single doc)', max: 5 },
-  { key: 'auditlogs',     label: 'Audit Logs',     icon: '🗒️', note: 'Action history', max: 5000 },
+  { key: 'visits',        label: 'Visits',         icon: '📅', note: 'Plan-your-visit submissions', max: 1000 },
+  { key: 'events',        label: 'Events',         icon: '📌', note: 'Upcoming + featured events', max: 200 },
+  { key: 'recaps',        label: 'Recaps',         icon: '🖼️', note: 'Event recap galleries', max: 200 },
+  { key: 'auditLogs',     label: 'Audit Logs',     icon: '🗒️', note: 'Action history', max: 5000 },
 ];
 
 async function loadDbStats() {

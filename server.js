@@ -606,6 +606,9 @@ async function requireAuthStrict(req, res, next) {
   }
 }
 
+// NOTE: '/api/visits' added here — the DELETE routes below used to have
+// no auth at all, which meant anyone who found the URL could wipe every
+// visit-planner submission without ever logging in. Fixed.
 app.use([
   '/api/audit',
   '/api/donations',
@@ -614,6 +617,7 @@ app.use([
   '/api/announcements',
   '/api/events',
   '/api/recaps',
+  '/api/visits',
 ], (req, res, next) => {
   if (['POST','PUT','PATCH','DELETE'].includes(req.method)) {
     return requireAuthStrict(req, res, next);
@@ -667,6 +671,7 @@ app.delete('/api/discussions/:id', requireAuth, async (req, res) => {
   try {
     const discussion = await Discussion.findByIdAndDelete(req.params.id);
     if (!discussion) return res.status(404).json({ error: 'Not found' });
+    await audit(req, 'DELETE_DISCUSSION', { discussionId: discussion._id, title: discussion.title });
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /api/discussions/:id:', err);
@@ -681,6 +686,7 @@ app.post('/api/fund/goal', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid goal amount' });
     }
     const fund = await Fund.findOneAndUpdate({}, { $set: { goal: Number(goal) } }, { upsert: true, new: true });
+    await audit(req, 'UPDATE_FUND_GOAL', { newGoal: fund.goal });
     res.json({ success: true, goal: fund.goal });
   } catch (err) {
     console.error('POST /api/fund/goal:', err);
@@ -693,7 +699,8 @@ app.post('/api/theme', requireAuth, async (req, res) => {
     const { heading, ref, body } = req.body;
     if (!heading) return res.status(400).json({ error: 'Heading required' });
     await Theme.deleteMany({});
-    await Theme.create({ heading: heading.slice(0,60), ref: (ref||'').slice(0,40), body: (body||'').slice(0,300) });
+    const theme = await Theme.create({ heading: heading.slice(0,60), ref: (ref||'').slice(0,40), body: (body||'').slice(0,300) });
+    await audit(req, 'UPDATE_THEME', { heading: theme.heading });
     res.json({ success: true });
   } catch (err) {
     console.error('POST /api/theme:', err);
@@ -711,6 +718,7 @@ app.post('/api/announcements', requireAuth, async (req, res) => {
       category:  (category || 'general').slice(0, 40).toLowerCase(),
       expiresAt: expiresAt ? new Date(expiresAt) : null,
     });
+    await audit(req, 'CREATE_ANNOUNCEMENT', { announcementId: ann._id, title: ann.title });
     res.status(201).json({ success: true, id: ann._id });
   } catch (err) {
     console.error('POST /api/announcements:', err);
@@ -722,6 +730,7 @@ app.delete('/api/announcements/:id', requireAuth, async (req, res) => {
   try {
     const ann = await Announcement.findByIdAndDelete(req.params.id);
     if (!ann) return res.status(404).json({ error: 'Not found' });
+    await audit(req, 'DELETE_ANNOUNCEMENT', { announcementId: ann._id, title: ann.title });
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /api/announcements/:id:', err);
@@ -730,13 +739,15 @@ app.delete('/api/announcements/:id', requireAuth, async (req, res) => {
 });
 
 // ── DELETE /api/visits/:id ──
-// Removes a single visit submission.
-app.delete('/api/visits/:id', async (req, res) => {
+// Removes a single visit submission. Now requires auth (see the
+// requireAuthStrict middleware registration above) and is logged.
+app.delete('/api/visits/:id', requireAuth, async (req, res) => {
   try {
     const deleted = await Visit.findByIdAndDelete(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Visit not found' });
     }
+    await audit(req, 'DELETE_VISIT', { visitId: deleted._id, name: deleted.name });
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /api/visits/:id:', err);
@@ -745,10 +756,11 @@ app.delete('/api/visits/:id', async (req, res) => {
 });
 
 // ── DELETE /api/visits ──
-// Clears ALL visit submissions.
-app.delete('/api/visits', async (req, res) => {
+// Clears ALL visit submissions. Now requires auth and is logged.
+app.delete('/api/visits', requireAuth, async (req, res) => {
   try {
-    await Visit.deleteMany({});
+    const result = await Visit.deleteMany({});
+    await audit(req, 'CLEAR_VISITS', { deleted: result.deletedCount });
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /api/visits:', err);
