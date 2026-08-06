@@ -422,7 +422,7 @@ const Theme = mongoose.model('Theme', themeSchema);
 const ANNOUNCEMENT_REACTION_KEYS = ['amen', 'love', 'praise'];
 
 const announcementSchema = new mongoose.Schema({
-  text:      { type: String, required: true, maxlength: 200 },
+  text:      { type: String, required: true, maxlength: 1500 },
   title:     { type: String, default: '',        maxlength: 100 },
   category:  { type: String, default: 'general', maxlength: 40, lowercase: true, trim: true },
   expiresAt: { type: Date,   default: null },
@@ -706,7 +706,7 @@ app.post('/api/announcements', requireAuth, async (req, res) => {
     const { text, title, category, expiresAt } = req.body;
     if (!text) return res.status(400).json({ error: 'Text required' });
     const ann = await Announcement.create({
-      text:      text.slice(0, 200),
+      text:      text.slice(0, 1500),
       title:     (title || '').slice(0, 100),
       category:  (category || 'general').slice(0, 40).toLowerCase(),
       expiresAt: expiresAt ? new Date(expiresAt) : null,
