@@ -427,7 +427,6 @@ tr:hover td { background: #fafafa; }
   vertical-align: middle; margin-right: 6px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
 /* ── RESPONSIVE ── */
 @media (max-width: 768px) {
   .sidebar { width: 60px; }
@@ -437,6 +436,34 @@ tr:hover td { background: #fafafa; }
   .content { padding: 20px 16px; }
   .nav-item { padding: 12px; justify-content: center; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* Tables scroll horizontally inside their own card instead of
+     squeezing columns unreadably or forcing the whole page sideways */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { min-width: 640px; }
+
+  /* DB cards: 280px min was wider than what's left after the sidebar
+     on a phone screen — drop the floor so cards can actually fit */
+  .db-grid { grid-template-columns: 1fr; }
+
+  .topbar { padding: 0 16px; }
+  .topbar-title { font-size: 16px; }
+  .topbar-right { gap: 8px; }
+  .badge-superadmin { display: none; } /* redundant with page context on a cramped topbar */
+}
+
+@media (max-width: 480px) {
+  /* Inputs under 16px trigger iOS Safari's auto-zoom on focus */
+  .filter-select, .filter-input, .db-older-input {
+    font-size: 16px;
+  }
+  .audit-filters { gap: 8px; }
+  .modal { padding: 24px 20px; }
+  #toast {
+    white-space: normal;
+    max-width: calc(100vw - 48px);
+    text-align: center;
+  }
 }
 </style>
 </head>
