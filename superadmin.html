@@ -149,14 +149,47 @@ body {
   padding: 0 32px;
   height: 60px;
   display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
   position: sticky; top: 0; z-index: 50;
+}
+.topbar-left {
+  display: flex; align-items: center; gap: 12px;
+  min-width: 0;
 }
 .topbar-title {
   font-family: 'Playfair Display', serif;
   font-size: 18px; color: var(--navy); font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .topbar-right {
   display: flex; align-items: center; gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Hamburger — hidden on desktop, shown only inside the mobile media query */
+.btn-hamburger {
+  display: none;
+  width: 36px; height: 36px;
+  align-items: center; justify-content: center;
+  background: transparent; border: 1.5px solid var(--border);
+  border-radius: 8px; cursor: pointer; flex-shrink: 0;
+  color: var(--navy);
+}
+.btn-hamburger:active { background: var(--surface); }
+
+/* Off-canvas backdrop — only relevant on mobile, toggled via .show */
+.sidebar-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(4,21,52,0.5);
+  backdrop-filter: blur(2px);
+  z-index: 99;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.sidebar-overlay.show {
+  display: block;
+  opacity: 1;
 }
 .badge-superadmin {
   background: var(--navy); color: var(--gold);
@@ -429,27 +462,53 @@ tr:hover td { background: #fafafa; }
 @keyframes spin { to { transform: rotate(360deg); } }
 /* ── RESPONSIVE ── */
 @media (max-width: 768px) {
-  .sidebar { width: 60px; }
+  /* Sidebar becomes a full off-canvas drawer instead of a squeezed
+     60px icon rail — icon-only nav on a touch screen is a mis-tap
+     trap, and it still hid the admin name/status entirely. The full
+     sidebar now slides in over the content on demand. */
+  .sidebar {
+    width: min(280px, 82vw);
+    transform: translateX(-100%);
+    transition: transform 0.28s ease;
+  }
+  .sidebar.open { transform: translateX(0); }
   .sidebar-brand h2, .sidebar-brand p, .nav-item span,
-  .admin-info, .btn-logout span { display: none; }
-  .main { margin-left: 60px; }
+  .admin-info, .btn-logout span { display: block; }
+  .admin-chip { display: flex; }
+  .nav-item { padding: 12px 20px; justify-content: flex-start; }
+
+  .main { margin-left: 0; }
   .content { padding: 20px 16px; }
-  .nav-item { padding: 12px; justify-content: center; }
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+
+  .btn-hamburger { display: inline-flex; }
+
+  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .stat-card { padding: 16px; }
+  .stat-value { font-size: 22px; }
 
   /* Tables scroll horizontally inside their own card instead of
      squeezing columns unreadably or forcing the whole page sideways */
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   table { min-width: 640px; }
 
-  /* DB cards: 280px min was wider than what's left after the sidebar
-     on a phone screen — drop the floor so cards can actually fit */
+  /* DB cards: 280px min was wider than the phone viewport itself —
+     drop the floor so cards can actually fit */
   .db-grid { grid-template-columns: 1fr; }
 
-  .topbar { padding: 0 16px; }
-  .topbar-title { font-size: 16px; }
-  .topbar-right { gap: 8px; }
+  .topbar { padding: 0 12px; height: 56px; }
+  .topbar-title { font-size: 15px; }
+  .topbar-right { gap: 6px; }
   .badge-superadmin { display: none; } /* redundant with page context on a cramped topbar */
+  .btn-go-admin span { display: none; } /* icon-only on mobile, still labeled via title attr */
+  .btn-go-admin { padding: 8px; }
+
+  .section-header h2 { font-size: 19px; }
+  .section-header p  { font-size: 12px; }
+
+  .audit-filters { flex-wrap: wrap; }
+  .filter-select, .filter-input { flex: 1 1 140px; }
+
+  .modal { max-width: 92vw; }
 }
 
 @media (max-width: 480px) {
@@ -464,13 +523,25 @@ tr:hover td { background: #fafafa; }
     max-width: calc(100vw - 48px);
     text-align: center;
   }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .pagination { justify-content: center; text-align: center; }
+}
+
+/* Sidebar only needs to behave as a drawer below 768px — above that,
+   these rules are inert so desktop is completely unaffected. */
+@media (min-width: 769px) {
+  .btn-hamburger { display: none; }
+  .sidebar-overlay { display: none !important; }
 }
 </style>
 </head>
 <body>
 
+<!-- Backdrop shown behind the sidebar drawer on mobile only -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
 <!-- SIDEBAR -->
-<aside class="sidebar">
+<aside class="sidebar" id="sidebar">
   <div class="sidebar-brand">
     <div class="logo-ring">M</div>
     <h2>Makeni Central SDA</h2>
@@ -519,12 +590,17 @@ tr:hover td { background: #fafafa; }
 <!-- MAIN -->
 <div class="main">
   <header class="topbar">
-    <div class="topbar-title" id="topbar-title">Dashboard</div>
+    <div class="topbar-left">
+      <button class="btn-hamburger" onclick="openSidebar()" aria-label="Open menu">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="topbar-title" id="topbar-title">Dashboard</div>
+    </div>
     <div class="topbar-right">
       <span class="badge-superadmin">⬡ Super Admin</span>
-      <a href="admin.html" class="btn-go-admin">
+      <a href="admin.html" class="btn-go-admin" title="Admin Panel">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-        Admin Panel
+        <span>Admin Panel</span>
       </a>
     </div>
   </header>
@@ -779,7 +855,28 @@ function switchSection(id, el) {
   document.getElementById('section-' + id).classList.add('active');
   el.classList.add('active');
   document.getElementById('topbar-title').textContent = sectionTitles[id] || id;
+  closeSidebar(); // no-op on desktop; on mobile the drawer should close after a choice is made
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+/* ══════════════════════════════════════
+   MOBILE SIDEBAR DRAWER
+══════════════════════════════════════ */
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebar-overlay').classList.add('show');
+  document.body.style.overflow = 'hidden'; // stop background scroll while drawer is open
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('show');
+  document.body.style.overflow = '';
+}
+// Collapse the drawer automatically if the viewport is resized/rotated
+// past the mobile breakpoint while it's open.
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 768) closeSidebar();
+});
 
 /* ══════════════════════════════════════
    TOAST
