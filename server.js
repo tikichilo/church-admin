@@ -155,6 +155,12 @@ const uploadRecapImages = multer({
   limits: { fileSize: 5 * 1024 * 1024, files: 10 }, // 5MB each, 10 max
 });
 
+const uploadGalleryPhoto = multer({
+  storage: memoryStorage,
+  fileFilter: imageFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+});
+
 
 /* ═══════════════════════════════════════════════
    MIDDLEWARE
@@ -478,6 +484,20 @@ const recapSchema = new mongoose.Schema({
 });
 const Recap = mongoose.model('Recap', recapSchema);
 
+// ── GalleryPhoto — home page "Moments of Grace" gallery ──
+// One document per photo (not grouped into albums like Recap) so each
+// tile on the home page can be filtered independently by category.
+// imageUrl stores a full Cloudinary secure_url, same as events/recaps.
+const GALLERY_CATEGORIES = ['worship', 'youth', 'community', 'baptism', 'events'];
+
+const galleryPhotoSchema = new mongoose.Schema({
+  title:     { type: String, required: true, maxlength: 120 },
+  category:  { type: String, required: true, enum: GALLERY_CATEGORIES },
+  imageUrl:  { type: String, required: true }, // Cloudinary secure_url
+  createdAt: { type: Date,   default: Date.now },
+});
+const GalleryPhoto = mongoose.model('GalleryPhoto', galleryPhotoSchema);
+
 
 /* ═══════════════════════════════════════════════
    ROUTES — READS used by the admin dashboard
@@ -552,6 +572,23 @@ app.get('/api/recaps', async (req, res) => {
   }
 });
 
+// ── GET /api/gallery ──
+// Home page "Moments of Grace" gallery photos, newest first.
+// Optional ?category=worship|youth|community|baptism|events filters;
+// omit (or pass "all") to get everything. Read-only here — writes are
+// below in the ROUTES — ADMIN section, gated by requireAuthStrict.
+app.get('/api/gallery', async (req, res) => {
+  try {
+    const { category } = req.query;
+    const filter = category && category !== 'all' ? { category } : {};
+    const photos = await GalleryPhoto.find(filter).sort({ createdAt: -1 }).lean();
+    res.json(photos);
+  } catch (err) {
+    console.error('GET /api/gallery:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 
 /* ═══════════════════════════════════════════════
    AUDIT LOG — Schema & helper
@@ -606,9 +643,12 @@ async function requireAuthStrict(req, res, next) {
   }
 }
 
-// NOTE: '/api/visits' added here — the DELETE routes below used to have
-// no auth at all, which meant anyone who found the URL could wipe every
-// visit-planner submission without ever logging in. Fixed.
+// NOTE: '/api/visits' and '/api/gallery' are protected here — without
+// them, the DELETE/POST routes would have no auth at all, meaning
+// anyone who found the URL could create or wipe content without ever
+// logging in. GET requests on these paths stay public (see the `next()`
+// fallthrough below) since the public site and dashboard both need to
+// read this data without a token.
 app.use([
   '/api/audit',
   '/api/donations',
@@ -618,6 +658,7 @@ app.use([
   '/api/events',
   '/api/recaps',
   '/api/visits',
+  '/api/gallery',
 ], (req, res, next) => {
   if (['POST','PUT','PATCH','DELETE'].includes(req.method)) {
     return requireAuthStrict(req, res, next);
@@ -888,6 +929,57 @@ app.delete('/api/recaps/:id', async (req, res) => {
   }
 });
 
+// POST /api/gallery — multipart/form-data: `title` + `category` fields
+// + a single `photo` file. Category must be one of GALLERY_CATEGORIES
+// so it always lines up with a filter pill on the home page. Image is
+// parsed into memory by multer, then streamed straight to Cloudinary.
+app.post('/api/gallery', uploadGalleryPhoto.single('photo'), async (req, res) => {
+  try {
+    const { title, category } = req.body;
+
+    if (!title || !category) {
+      return res.status(400).json({ error: 'Title and category are required' });
+    }
+    if (!GALLERY_CATEGORIES.includes(category)) {
+      return res.status(400).json({ error: 'Invalid category' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'A photo is required' });
+    }
+
+    console.log('⬆️  Uploading gallery photo to Cloudinary...');
+    const imageUrl = await uploadImageBuffer(req.file.buffer, 'makeni-central/gallery');
+    console.log('✅ Gallery photo uploaded');
+
+    const photo = await GalleryPhoto.create({
+      title: title.slice(0, 120),
+      category,
+      imageUrl,
+    });
+
+    await audit(req, 'CREATE_GALLERY_PHOTO', { photoId: photo._id, title: photo.title, category: photo.category });
+    res.status(201).json({ success: true, id: photo._id });
+  } catch (err) {
+    console.error('POST /api/gallery:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// DELETE /api/gallery/:id
+app.delete('/api/gallery/:id', async (req, res) => {
+  try {
+    const photo = await GalleryPhoto.findByIdAndDelete(req.params.id);
+    if (!photo) return res.status(404).json({ error: 'Not found' });
+
+    await deleteCloudinaryImage(photo.imageUrl);
+    await audit(req, 'DELETE_GALLERY_PHOTO', { photoId: photo._id, title: photo.title });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /api/gallery/:id:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 
 /* ═══════════════════════════════════════════════
    SUPER ADMIN MIDDLEWARE
@@ -1018,14 +1110,14 @@ app.get('/api/superadmin/audit', requireSuperAdmin, async (req, res) => {
 
 app.get('/api/superadmin/db-stats', requireSuperAdmin, async (req, res) => {
   try {
-    const [discussions, themes, announcements, donations, auditLogs, admins, visits, events, recaps] =
+    const [discussions, themes, announcements, donations, auditLogs, admins, visits, events, recaps, gallery] =
       await Promise.all([
         Discussion.countDocuments(), Theme.countDocuments(),
         Announcement.countDocuments(), Donation.countDocuments(),
         AuditLog.countDocuments(), User.countDocuments(), Visit.countDocuments(),
-        Event.countDocuments(), Recap.countDocuments(),
+        Event.countDocuments(), Recap.countDocuments(), GalleryPhoto.countDocuments(),
       ]);
-    res.json({ discussions, themes, announcements, donations, auditLogs, admins, visits, events, recaps });
+    res.json({ discussions, themes, announcements, donations, auditLogs, admins, visits, events, recaps, gallery });
   } catch (err) {
     console.error('GET /api/superadmin/db-stats:', err);
     res.status(500).json({ error: 'Server error' });
@@ -1051,6 +1143,11 @@ const CLEARABLE = {
     }
     return Recap.deleteMany({});
   },
+  gallery: async () => {
+    const docs = await GalleryPhoto.find({}, 'imageUrl').lean();
+    for (const d of docs) await deleteCloudinaryImage(d.imageUrl);
+    return GalleryPhoto.deleteMany({});
+  },
 };
 
 app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res) => {
@@ -1061,7 +1158,7 @@ app.delete('/api/superadmin/db/:collection', requireSuperAdmin, async (req, res)
     }
     const olderThanDays = parseInt(req.query.olderThan) || 0;
     let result;
-    if (olderThanDays > 0 && !['themes', 'events', 'recaps'].includes(key)) {
+    if (olderThanDays > 0 && !['themes', 'events', 'recaps', 'gallery'].includes(key)) {
       const cutoff = new Date(Date.now() - olderThanDays * 86400000);
       const Model = { discussions: Discussion, announcements: Announcement, donations: Donation, auditlogs: AuditLog, visits: Visit }[key];
       result = Model ? await Model.deleteMany({ createdAt: { $lt: cutoff } }) : await CLEARABLE[key]();

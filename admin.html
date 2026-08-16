@@ -132,7 +132,7 @@
   .disc-body-preview { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
   .disc-actions { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; }
 
-  /* ── EVENT / RECAP ROWS ── */
+  /* ── EVENT / RECAP / GALLERY ROWS ── */
   .item-row { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
   .item-row:last-child { border-bottom: none; }
   .item-thumb { width: 60px; height: 60px; border-radius: 8px; background: var(--surface-3); object-fit: cover; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--muted); }
@@ -273,6 +273,10 @@
     <button class="nav-item" onclick="showPage('announcements')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       Announcements
+    </button>
+    <button class="nav-item" onclick="showPage('gallery')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+      Gallery
     </button>
 
     <div class="nav-label">News Page</div>
@@ -542,6 +546,58 @@
       </div>
     </div>
 
+    <!-- ══ GALLERY PAGE ══ -->
+    <div class="page" id="page-gallery">
+      <div class="two-col mb-20">
+        <div class="card">
+          <div class="card-header"><h3>Add Gallery Photo</h3></div>
+          <div class="card-body">
+            <div class="form-group">
+              <label>Photo Title</label>
+              <input type="text" id="gallery-title" placeholder="e.g. Sabbath Worship Service" maxlength="120"/>
+            </div>
+            <div class="form-group">
+              <label>Category</label>
+              <select id="gallery-category">
+                <option value="worship">Worship</option>
+                <option value="youth">Youth</option>
+                <option value="community">Community</option>
+                <option value="baptism">Baptism</option>
+                <option value="events">Events</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Photo</label>
+              <input type="file" id="gallery-photo" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"/>
+              <div class="form-hint">JPG, PNG, WEBP, or iPhone HEIC/HEIF — max 5MB. HEIC photos are automatically converted.</div>
+              <div class="preview-grid" id="gallery-photo-preview"></div>
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="addGalleryPhoto()" id="gallery-submit-btn">Add Photo</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Tips</h3></div>
+          <div class="card-body" style="font-size:13px; color:var(--muted); line-height:1.9;">
+            <ul style="padding-left:16px;">
+              <li>Photos appear in the "Moments of Grace" gallery on the home page</li>
+              <li>Category controls which filter pill each photo shows under</li>
+              <li>Deleting a photo also removes its uploaded image</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>All Gallery Photos</h3>
+          <span class="badge badge-purple" id="gallery-count-badge">0 photos</span>
+        </div>
+        <div id="gallery-list">
+          <div class="loading"><div class="spinner"></div> Loading…</div>
+        </div>
+      </div>
+    </div>
+
     <!-- ══ EVENTS PAGE ══ -->
     <div class="page" id="page-events">
       <div class="two-col mb-20">
@@ -760,6 +816,7 @@
             <ul style="margin-top:8px; padding-left:18px; line-height:2;">
               <li>GET/POST /api/theme</li>
               <li>GET/POST/DELETE /api/announcements</li>
+              <li>GET/POST/DELETE /api/gallery</li>
               <li>GET/POST/PATCH/DELETE /api/events</li>
               <li>GET/POST/DELETE /api/recaps</li>
               <li>GET /api/fund · POST /api/fund/goal</li>
@@ -812,6 +869,26 @@
     <div class="modal-footer">
       <button class="btn" onclick="closeDeleteAnnModal()" style="border:1px solid var(--border);">Cancel</button>
       <button class="btn btn-danger" onclick="confirmDeleteAnn()">Remove</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ DELETE GALLERY PHOTO MODAL ══════════════ -->
+<div class="modal-overlay" id="delete-gallery-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Delete Gallery Photo</h3>
+      <button class="modal-close" onclick="closeDeleteGalleryModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:14px; color:var(--muted);">Permanently remove this photo from the home page gallery?</p>
+      <div style="margin-top:16px; padding:14px; background:var(--surface-2); border-radius:8px; border-left:3px solid var(--danger);">
+        <p style="font-size:13px; font-weight:600;" id="delete-gallery-title">—</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeDeleteGalleryModal()" style="border:1px solid var(--border);">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDeleteGallery()">Delete</button>
     </div>
   </div>
 </div>

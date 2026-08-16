@@ -7,14 +7,17 @@ let deleteTargetId   = null;
 let deleteAnnId      = null;
 let deleteEventId    = null;
 let deleteRecapId    = null;
+let deleteGalleryId  = null;
 let allDonations     = [];
 let allDiscussions   = [];
 let allAnnouncements = [];
 let allEvents        = [];
 let allRecaps        = [];
+let allGallery       = [];
 let allVisits        = [];
-let selectedEventPoster = null;   // File or null
-let selectedRecapFiles  = [];     // File[]
+let selectedEventPoster  = null;   // File or null
+let selectedRecapFiles   = [];     // File[]
+let selectedGalleryPhoto = null;   // File or null
 
 // Clear localhost URLs saved during local dev — they break the deployed app
 if (API_URL.includes('localhost') || API_URL.includes('127.0.0.1')) {
@@ -121,6 +124,7 @@ const pageTitles = {
   dashboard:     'Dashboard',
   theme:         'Theme of the Month',
   announcements: 'Announcements',
+  gallery:       'Gallery',
   events:        'Events',
   recaps:        'Event Recaps',
   donations:     'Donations',
@@ -230,6 +234,7 @@ async function loadAll() {
     loadDiscussions(),
     loadTheme(),
     loadAnnouncements(),
+    loadGallery(),
     loadEvents(),
     loadRecaps(),
     loadVisits(),
@@ -474,6 +479,107 @@ async function confirmDeleteAnn() {
   }
 }
 
+/* ══════════════ GALLERY ══════════════ */
+const GALLERY_CATEGORY_LABELS = {
+  worship:   'Worship',
+  youth:     'Youth',
+  community: 'Community',
+  baptism:   'Baptism',
+  events:    'Events',
+};
+
+// Gallery photo URLs are full Cloudinary URLs, same pattern as event
+// posters and recap images — API_URL prefix only matters for any
+// legacy local paths left over from before Cloudinary was wired in.
+function galleryImgUrl(imageUrl) {
+  if (!imageUrl) return '';
+  return /^https?:\/\//.test(imageUrl) ? imageUrl : API_URL + imageUrl;
+}
+
+async function loadGallery() {
+  const data = await apiFetch('/api/gallery');
+  allGallery = Array.isArray(data) ? data : [];
+  el('gallery-count-badge').textContent = allGallery.length + ' photos';
+  renderGalleryList(allGallery);
+}
+
+function renderGalleryList(list) {
+  const wrap = el('gallery-list');
+  if (!list.length) {
+    wrap.innerHTML = `<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><p>No gallery photos yet. Add one above!</p></div>`;
+    return;
+  }
+  wrap.innerHTML = list.map(p => {
+    const date = new Date(p.createdAt).toLocaleDateString('en-ZM', { day:'2-digit', month:'short', year:'numeric' });
+    return `<div class="item-row">
+      <div class="item-thumb">${p.imageUrl ? `<img src="${esc(galleryImgUrl(p.imageUrl))}" style="width:60px;height:60px;border-radius:8px;object-fit:cover;" onerror="this.parentElement.textContent='🖼️'"/>` : '🖼️'}</div>
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span class="item-title">${esc(p.title)}</span>
+          <span class="badge badge-blue">${esc(GALLERY_CATEGORY_LABELS[p.category] || p.category)}</span>
+        </div>
+        <div class="item-meta">${date}</div>
+      </div>
+      <div class="item-actions">
+        <button class="btn btn-sm btn-danger" onclick="openDeleteGalleryModal('${p._id}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addGalleryPhoto() {
+  const title    = el('gallery-title').value.trim();
+  const category = el('gallery-category').value;
+
+  if (!title) { toast('Photo title is required', 'danger'); return; }
+  if (!selectedGalleryPhoto) { toast('A photo is required', 'danger'); return; }
+
+  const formData = new FormData();
+  formData.append('title', title);
+  formData.append('category', category);
+  formData.append('photo', selectedGalleryPhoto);
+
+  const btn = el('gallery-submit-btn');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  const res = await apiFetch('/api/gallery', { method: 'POST', body: formData });
+  btn.disabled = false; btn.textContent = 'Add Photo';
+
+  if (res && res.success) {
+    toast('Gallery photo added!', 'success');
+    el('gallery-title').value = '';
+    el('gallery-category').value = 'worship';
+    clearGalleryPhoto();
+    await logAudit('CREATE_GALLERY_PHOTO', { title, category });
+    loadGallery();
+  } else {
+    toast('Add failed — check server connection', 'danger');
+  }
+}
+
+function openDeleteGalleryModal(id) {
+  deleteGalleryId = id;
+  const p = allGallery.find(x => x._id === id);
+  el('delete-gallery-title').textContent = p ? p.title : id;
+  el('delete-gallery-modal').classList.add('open');
+}
+function closeDeleteGalleryModal() {
+  deleteGalleryId = null;
+  el('delete-gallery-modal').classList.remove('open');
+}
+async function confirmDeleteGallery() {
+  if (!deleteGalleryId) return;
+  const p = allGallery.find(x => x._id === deleteGalleryId);
+  const res = await apiFetch('/api/gallery/' + deleteGalleryId, { method: 'DELETE' });
+  closeDeleteGalleryModal();
+  if (res && res.success) {
+    toast('Gallery photo deleted', 'success');
+    await logAudit('DELETE_GALLERY_PHOTO', { id: deleteGalleryId, title: p?.title || '' });
+    loadGallery();
+  } else {
+    toast('Delete failed — check server connection', 'danger');
+  }
+}
+
 /* ══════════════ EVENTS ══════════════ */
 // Event posters are now full Cloudinary URLs (https://res.cloudinary.com/...).
 // The API_URL prefix only applies to legacy local /uploads/... paths from
@@ -704,6 +810,25 @@ function setupImagePreviews() {
     });
   }
 
+  const galleryInput = el('gallery-photo');
+  if (galleryInput) {
+    galleryInput.addEventListener('change', e => {
+      const file = e.target.files[0] || null;
+      if (file && !ALLOWED_IMAGE_RE.test(file.name)) {
+        toast('Unsupported file type — use JPG, PNG, WEBP, or HEIC/HEIF', 'danger');
+        galleryInput.value = '';
+        return;
+      }
+      if (file && file.size > MAX_IMAGE_MB * 1024 * 1024) {
+        toast(`"${file.name}" is over ${MAX_IMAGE_MB}MB`, 'danger');
+        galleryInput.value = '';
+        return;
+      }
+      selectedGalleryPhoto = file;
+      renderGalleryPhotoPreview();
+    });
+  }
+
   const recapInput = el('recap-images');
   if (recapInput) {
     recapInput.addEventListener('change', e => {
@@ -757,6 +882,23 @@ function clearEventPoster() {
   selectedEventPoster = null;
   el('event-poster').value = '';
   el('event-poster-preview').innerHTML = '';
+}
+
+function renderGalleryPhotoPreview() {
+  const wrap = el('gallery-photo-preview');
+  if (!selectedGalleryPhoto) { wrap.innerHTML = ''; return; }
+  const url = URL.createObjectURL(selectedGalleryPhoto);
+  wrap.innerHTML = `<div class="preview-thumb">
+    <img src="${url}" onload="URL.revokeObjectURL(this.src)"/>
+    <button type="button" class="preview-remove" onclick="clearGalleryPhoto()">✕</button>
+    <span class="preview-name">${esc(selectedGalleryPhoto.name)}</span>
+  </div>`;
+}
+
+function clearGalleryPhoto() {
+  selectedGalleryPhoto = null;
+  el('gallery-photo').value = '';
+  el('gallery-photo-preview').innerHTML = '';
 }
 
 function renderRecapPreview() {
