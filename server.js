@@ -175,10 +175,21 @@ app.get('/', (req, res) => {
 
 /* ═══════════════════════════════════════════════
    MONGODB CONNECTION
+   FIX: added serverSelectionTimeoutMS/socketTimeoutMS so a cold or
+   dropped connection fails fast with a clear error instead of hanging
+   the request until it times out — plus connection-state logging so
+   Render logs actually show when/why a disconnect happened.
 ═══════════════════════════════════════════════ */
-mongoose.connect(process.env.MONGO_URI)
+mongoose.connect(process.env.MONGO_URI, {
+  serverSelectionTimeoutMS: 10000, // fail fast instead of hanging ~30s
+  socketTimeoutMS: 45000,
+})
   .then(() => console.log('✦ MongoDB connected'))
   .catch(err => { console.error('MongoDB connection error:', err); process.exit(1); });
+
+mongoose.connection.on('disconnected', () => console.warn('⚠️  MongoDB disconnected'));
+mongoose.connection.on('reconnected', () => console.log('✅ MongoDB reconnected'));
+mongoose.connection.on('error', err => console.error('⚠️  MongoDB connection error:', err.message));
 
 
 /* ═══════════════════════════════════════════════
@@ -1192,8 +1203,18 @@ cron.schedule('0 0 * * 4', async () => {
   }
 });
 
+// FIX: keep-alive ping tightened from every 30 min to every 10 min.
+// Render's free-tier web services sleep after ~15 min of no inbound
+// HTTP traffic — a 30-min interval let the dyno sleep between pings,
+// and once asleep this cron itself stops running (no live process to
+// fire it), so the first real request after a gap would hit a cold
+// dyno + a not-yet-reconnected Mongo client. This alone won't fully
+// solve it if the app is idle for hours at a stretch — pair it with
+// an external uptime monitor (UptimeRobot / cron-job.org) hitting
+// /api/fund every 5–10 min, which can wake the dyno even while this
+// process is asleep.
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-cron.schedule('*/30 * * * *', async () => {
+cron.schedule('*/10 * * * *', async () => {
   try {
     const res = await fetch(`${SELF_URL}/api/fund`);
     console.log(`[CRON] Keep-alive ping → ${res.status}`);
